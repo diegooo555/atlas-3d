@@ -34,6 +34,7 @@ self.addEventListener('activate', event => {
     );
 });
 
+// ---------- Estrategias ----------
 function cacheFirst(peticion) {
     return caches.match(peticion).then(enCache => {
         if (enCache) return enCache;
@@ -45,6 +46,43 @@ function cacheFirst(peticion) {
     });
 }
 
+function networkFirst(peticion) {
+    return fetch(peticion)
+        .then(respuesta => {
+            const clon = respuesta.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(peticion, clon));
+            return respuesta;
+        })
+        .catch(() => caches.match(peticion));
+}
+
+function staleWhileRevalidate(peticion) {
+    return caches.open(CACHE_NAME).then(cache =>
+        cache.match(peticion).then(enCache => {
+            const actualizacion = fetch(peticion).then(respuesta => {
+                cache.put(peticion, respuesta.clone());
+                return respuesta;
+            });
+            return enCache || actualizacion;
+        })
+    );
+}
+
+// ---------- Enrutamiento por tipo de recurso ----------
 self.addEventListener('fetch', event => {
-    event.respondWith(cacheFirst(event.request));
+    const url = new URL(event.request.url);
+
+    if (url.pathname.startsWith('/iconos/')) {
+        // Íconos y, más adelante, modelos .glb: inmutables → Cache First
+        console.log('[SW] Cache First →', url.pathname);
+        event.respondWith(cacheFirst(event.request));
+    } else if (url.pathname.startsWith('/api/')) {
+        // Futuro catálogo de modelos: debe verse al día → Network First
+        console.log('[SW] Network First →', url.pathname);
+        event.respondWith(networkFirst(event.request));
+    } else {
+        // Shell (HTML, manifest): rápido, y se actualiza solo → Stale-While-Revalidate
+        console.log('[SW] Stale-While-Revalidate →', url.pathname);
+        event.respondWith(staleWhileRevalidate(event.request));
+    }
 });
