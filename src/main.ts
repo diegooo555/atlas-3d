@@ -3,6 +3,7 @@ import heroImg from './assets/hero.png'
 import typescriptLogo from './assets/typescript.svg'
 import viteLogo from './assets/vite.svg'
 import { setupCounter } from './counter.ts'
+import { registerSW } from 'virtual:pwa-register';
 
 import {
   abrirBaseDeDatos, marcarModeloVisto, alternarFavorito, obtenerFavoritos,
@@ -113,10 +114,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
 setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
 
-// Registro del Service Worker — Sesión 28.
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker
-    .register("/sw.js")
-    .then((reg) => console.log("SW registrado:", reg.scope))
-    .catch((err) => console.error("Error al registrar SW:", err));
-}
+registerSW({
+  immediate: true,
+  onRegisteredSW(swUrl, registration) {
+    console.log('SW de Workbox registrado:', swUrl, registration);
+  },
+  onRegisterError(error) {
+    console.error('Error al registrar el SW de Workbox:', error);
+  },
+});
