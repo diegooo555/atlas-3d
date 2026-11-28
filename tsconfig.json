@@ -20,5 +20,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Sesión 37: el Service Worker (WebWorker) se revisa aparte con tsconfig.sw.json
+  "exclude": ["src/sw.ts"]
 }

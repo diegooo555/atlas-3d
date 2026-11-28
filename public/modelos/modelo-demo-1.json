@@ -1,0 +1,8 @@
+{
+  "id": "modelo-demo-1",
+  "nombre": "Patrón MVC",
+  "resumen": "Separa la aplicación en Modelo (datos y reglas), Vista (lo que ve el usuario) y Controlador (traduce las acciones del usuario en cambios del modelo).",
+  "componentes": ["Modelo", "Vista", "Controlador"],
+  "cuandoUsarla": "Interfaces con varias vistas sobre los mismos datos, o cuando se quiere probar la lógica sin depender de la interfaz.",
+  "riesgo": "Controladores «gordos»: si toda la lógica termina en el controlador, la separación existe solo de nombre."
+}

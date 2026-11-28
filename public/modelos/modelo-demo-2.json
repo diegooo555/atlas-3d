@@ -1,0 +1,8 @@
+{
+  "id": "modelo-demo-2",
+  "nombre": "Arquitectura en capas",
+  "resumen": "Organiza el sistema en capas horizontales (presentación, negocio, datos), donde cada capa solo usa los servicios de la capa inmediatamente inferior.",
+  "componentes": ["Capa de presentación", "Capa de negocio", "Capa de acceso a datos", "Base de datos"],
+  "cuandoUsarla": "Aplicaciones empresariales típicas, equipos que empiezan y sistemas donde se valora más el orden que el rendimiento extremo.",
+  "riesgo": "El «sumidero»: peticiones que atraviesan todas las capas sin que ninguna haga nada útil, añadiendo latencia y código ceremonial."
+}

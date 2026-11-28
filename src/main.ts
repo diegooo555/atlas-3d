@@ -8,7 +8,10 @@ import { iniciarCamaraDeFondo, detenerCamaraDeFondo, describirErrorCamara } from
 import {
   abrirBaseDeDatos, marcarModeloVisto, alternarFavorito, obtenerFavoritos,
   derivarClaveDesdeContrasena, guardarNotaDeEstudio, descifrarTexto,
+  encolarDescargas, obtenerDescargas,
 } from './db';
+import { descargarPendientes, ETIQUETA_SYNC, MODELOS_IDS, urlDeModelo } from "./descargas";
+import { activarAvisos, describirEstadoAvisos, estadoAvisos, mostrarAviso } from "./avisos";
 
 const panel = document.createElement('div');
 panel.style.cssText = 'padding:12px;font-family:sans-serif';
@@ -34,7 +37,11 @@ function obtenerSal(): Uint8Array {
   return sal;
 }
 
-abrirBaseDeDatos().then(db => {
+// Sesión 37: la conexión se comparte con la sección de descargas (más abajo).
+let db: IDBDatabase;
+const dbLista = abrirBaseDeDatos().then((d) => (db = d));
+
+dbLista.then(db => {
   panel.querySelector('#ver1')!.addEventListener('click', async () => mostrar(await marcarModeloVisto(db, 'modelo-demo-1')));
   panel.querySelector('#ver2')!.addEventListener('click', async () => mostrar(await marcarModeloVisto(db, 'modelo-demo-2')));
   panel.querySelector('#fav1')!.addEventListener('click', async () => mostrar({ favorito: await alternarFavorito(db, 'modelo-demo-1') }));
@@ -62,7 +69,15 @@ abrirBaseDeDatos().then(db => {
 registerSW({
   immediate: true,
   onRegisteredSW(swUrl, registration) {
-    console.log('SW de Workbox registrado:', swUrl, registration);
+    console.log('SW del Atlas (injectManifest) registrado:', swUrl, registration);
+  },
+  // Sesión 37: el precaché quedó completo por primera vez.
+  onOfflineReady() {
+    estadoDescargaEl.textContent = "✓ La app ya funciona sin conexión.";
+    // La notificación del sistema solo si la página no está visible.
+    if (document.visibilityState !== "visible") {
+      void mostrarAviso("Atlas 3D listo sin conexión", "Ya puedes abrir el Atlas aunque no tengas red.");
+    }
   },
   onRegisterError(error) {
     console.error('Error al registrar el SW de Workbox:', error);
@@ -158,3 +173,168 @@ document.addEventListener("visibilitychange", () => {
     avisarVisor("La cámara se apagó al salir de la página. Vuelve a activarla cuando quieras.");
   }
 });
+// ── Sesión 37: fichas descargables, avisos y Background Sync ───────────────
+// Nombres de las fichas (las fichas completas viven en public/modelos/*.json y
+// NO están en el precaché: se descargan cuando el usuario lo pide).
+const CATALOGO: Record<string, string> = {
+  "modelo-demo-1": "Patrón MVC",
+  "modelo-demo-2": "Arquitectura en capas",
+  "modelo-demo-3": "Microservicios",
+};
+
+interface Ficha {
+  id: string;
+  nombre: string;
+  resumen: string;
+  componentes: string[];
+  cuandoUsarla: string;
+  riesgo: string;
+}
+
+const btnAvisos = document.querySelector<HTMLButtonElement>("#btn-avisos")!;
+const estadoAvisosEl = document.querySelector<HTMLElement>("#estado-avisos")!;
+const btnDescargar = document.querySelector<HTMLButtonElement>("#btn-descargar")!;
+const barraProgreso = document.querySelector<HTMLProgressElement>("#progreso-descarga")!;
+const estadoDescargaEl = document.querySelector<HTMLElement>("#estado-descarga")!;
+const tarjetasEl = document.querySelector<HTMLUListElement>("#tarjetas")!;
+const fichaAbiertaEl = document.querySelector<HTMLElement>("#ficha-abierta")!;
+
+// Abrir una ficha desde una notificación: el aviso lleva data.url = "/?modelo=ID".
+const modeloDestacado = new URLSearchParams(location.search).get("modelo");
+let descargados = new Set<string>();
+
+function pintarAvisos() {
+  const estado = estadoAvisos();
+  estadoAvisosEl.textContent = describirEstadoAvisos(estado);
+  btnAvisos.disabled = estado !== "default";
+}
+
+function pintarProgreso(hechos: number, total: number) {
+  barraProgreso.hidden = false;
+  barraProgreso.max = total;
+  barraProgreso.value = hechos;
+  estadoDescargaEl.textContent =
+    hechos === total
+      ? `✓ ${hechos} de ${total} fichas guardadas: ya puedes consultarlas sin conexión.`
+      : `Descargando fichas: ${hechos} de ${total}…`;
+}
+
+async function refrescarDescargados() {
+  await dbLista;
+  const todas = await obtenerDescargas(db);
+  descargados = new Set(todas.filter((d) => d.estado === "listo").map((d) => d.modeloId));
+}
+
+function render() {
+  tarjetasEl.replaceChildren(
+    ...MODELOS_IDS.map((id) => {
+      const li = document.createElement("li");
+      li.className = "tarjeta";
+      li.dataset.modelo = id;
+      if (id === modeloDestacado) li.classList.add("destacada");
+      const titulo = document.createElement("span");
+      titulo.textContent = CATALOGO[id] ?? id;
+      if (descargados.has(id)) {
+        const insignia = document.createElement("span");
+        insignia.className = "insignia-offline";
+        insignia.textContent = " · disponible sin conexión";
+        titulo.append(insignia);
+      }
+      const btnVer = document.createElement("button");
+      btnVer.type = "button";
+      btnVer.textContent = "Ver ficha";
+      btnVer.addEventListener("click", () => abrirFicha(id));
+      li.append(titulo, btnVer);
+      return li;
+    })
+  );
+}
+
+async function abrirFicha(id: string) {
+  fichaAbiertaEl.hidden = false;
+  try {
+    // Si la ficha se descargó, el SW la sirve desde la caché «modelos-3d» aunque no haya red.
+    const resp = await fetch(urlDeModelo(id));
+    if (!resp.ok) throw new Error(`el servidor respondió ${resp.status}`);
+    const ficha = (await resp.json()) as Ficha;
+    fichaAbiertaEl.replaceChildren();
+    const h = document.createElement("h4");
+    h.textContent = ficha.nombre;
+    const resumen = document.createElement("p");
+    resumen.textContent = ficha.resumen;
+    const componentes = document.createElement("p");
+    componentes.textContent = "Componentes: " + ficha.componentes.join(", ") + ".";
+    const cuando = document.createElement("p");
+    cuando.textContent = "Cuándo usarla: " + ficha.cuandoUsarla;
+    const riesgo = document.createElement("p");
+    riesgo.textContent = "Riesgo principal: " + ficha.riesgo;
+    fichaAbiertaEl.append(h, resumen, componentes, cuando, riesgo);
+  } catch (err) {
+    fichaAbiertaEl.textContent =
+      "No se pudo abrir la ficha (¿sin conexión y sin descargar?): " + (err instanceof Error ? err.message : String(err));
+  }
+}
+
+btnAvisos.addEventListener("click", async () => {
+  // El permiso se pide AQUÍ, dentro del clic — no al cargar la página.
+  await activarAvisos();
+  pintarAvisos();
+});
+
+btnDescargar.addEventListener("click", async () => {
+  await dbLista;
+  await encolarDescargas(db, MODELOS_IDS);
+  pintarProgreso(0, MODELOS_IDS.length);
+  btnDescargar.disabled = true;
+  try {
+    let enSegundoPlano = false;
+    if ("serviceWorker" in navigator && "SyncManager" in window) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        await (reg as ServiceWorkerRegistration & { sync: { register(tag: string): Promise<void> } }).sync.register(ETIQUETA_SYNC);
+        enSegundoPlano = true;
+        estadoDescargaEl.textContent = "Descarga solicitada: el navegador la completará en cuanto haya conexión.";
+      } catch {
+        // Tener SyncManager no basta: register() falla (NotAllowedError) si el
+        // usuario bloqueó la sincronización en segundo plano para este sitio.
+        enSegundoPlano = false;
+      }
+    }
+    if (!enSegundoPlano) {
+      // Plan B (Safari, Firefox, o permiso denegado): se descarga desde la página, con la pestaña abierta.
+      await descargarPendientes(db, pintarProgreso);
+      await refrescarDescargados();
+      render();
+    }
+  } catch (err) {
+    estadoDescargaEl.textContent = "No se pudo completar la descarga: " + (err instanceof Error ? err.message : String(err));
+  } finally {
+    btnDescargar.disabled = false;
+  }
+});
+
+// Mensajes del Service Worker durante el evento sync: la página pinta la barra.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", async (event) => {
+    const msg = event.data as { tipo?: string; hechos?: number; total?: number } | null;
+    if (msg?.tipo === "progreso" && msg.hechos !== undefined && msg.total !== undefined) {
+      pintarProgreso(msg.hechos, msg.total);
+    } else if (msg?.tipo === "descarga-completa") {
+      await refrescarDescargados();
+      render();
+    }
+  });
+}
+
+// «Atlas 3D instalado»: aquí sí tiene sentido una notificación del sistema,
+// porque el usuario acaba de pasar a otra ventana (la app instalada).
+window.addEventListener("appinstalled", () => {
+  void mostrarAviso("Atlas 3D instalado", "Ya puedes abrir el Atlas desde tu pantalla de inicio.");
+});
+
+pintarAvisos();
+render();
+refrescarDescargados().then(render);
+if (modeloDestacado && MODELOS_IDS.includes(modeloDestacado)) {
+  tarjetasEl.querySelector(`[data-modelo="${modeloDestacado}"]`)?.scrollIntoView({ block: "center" });
+}

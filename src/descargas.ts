@@ -1,0 +1,38 @@
+// ===== Descarga de fichas — Sesión 37 =====
+// Este módulo lo importan el Service Worker (sw.ts) y la página (main.ts):
+// como Vite empaqueta ambos, la lógica se escribe UNA sola vez.
+import { obtenerDescargas, marcarDescargaLista } from "./db";
+
+export const ETIQUETA_SYNC = "descargar-modelos";
+export const CACHE_MODELOS = "modelos-3d";
+export const urlDeModelo = (id: string) => `/modelos/${id}.json`;
+
+/** Las fichas que existen en public/modelos/. */
+export const MODELOS_IDS = ["modelo-demo-1", "modelo-demo-2", "modelo-demo-3"];
+
+export type AlProgresar = (hechos: number, total: number) => void | Promise<void>;
+
+/**
+ * Descarga, una por una, las fichas que están «pendiente». Si una falla LANZA:
+ * las anteriores ya quedaron marcadas como «listo» (no se vuelven a pedir) y
+ * el navegador reintentará solo las que faltan.
+ * Devuelve cuántas se descargaron en esta pasada.
+ */
+export async function descargarPendientes(db: IDBDatabase, alProgresar: AlProgresar): Promise<number> {
+  const todas = await obtenerDescargas(db);
+  const total = todas.length;
+  let hechos = todas.filter((d) => d.estado === "listo").length;
+  const cache = await caches.open(CACHE_MODELOS);
+  let descargadas = 0;
+  for (const d of todas.filter((x) => x.estado === "pendiente")) {
+    // cache: "reload" evita que la caché HTTP del navegador responda por la red.
+    const resp = await fetch(urlDeModelo(d.modeloId), { cache: "reload" });
+    if (!resp.ok) throw new Error(`${d.modeloId}: el servidor respondió ${resp.status}`);
+    await cache.put(urlDeModelo(d.modeloId), resp);
+    await marcarDescargaLista(db, d.modeloId);
+    hechos++;
+    descargadas++;
+    await alProgresar(hechos, total);
+  }
+  return descargadas;
+}

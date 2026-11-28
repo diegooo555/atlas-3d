@@ -9,12 +9,20 @@ export interface RegistroProgreso {
 
 export function abrirBaseDeDatos(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-        const peticion = indexedDB.open('atlas3d-progreso-db', 1);
-        peticion.onupgradeneeded = () => {
-            const db = peticion.result;
-            const store = db.createObjectStore('progreso', { keyPath: 'modeloId' });
-            store.createIndex('porFavorito', 'favorito', { unique: false });
-            store.createIndex('porUltimaVisita', 'ultimaVisita', { unique: false });
+        // Sesión 37: versión 2, con el almacén nuevo «descargas».
+        const peticion = indexedDB.open('atlas3d-progreso-db', 2);
+        peticion.onupgradeneeded = (event) => {
+            const db = (event.target as IDBOpenDBRequest).result;
+            // Migración por tramos (Sesión 22/26): quien viene de la v1 conserva su
+            // progreso y solo recibe lo nuevo.
+            if (event.oldVersion < 1) {
+                const store = db.createObjectStore('progreso', { keyPath: 'modeloId' });
+                store.createIndex('porFavorito', 'favorito', { unique: false });
+                store.createIndex('porUltimaVisita', 'ultimaVisita', { unique: false });
+            }
+            if (event.oldVersion < 2) {
+                db.createObjectStore('descargas', { keyPath: 'modeloId' });
+            }
         };
         peticion.onsuccess = () => resolve(peticion.result);
         peticion.onerror = () => reject(peticion.error);
@@ -105,5 +113,39 @@ export async function guardarNotaDeEstudio(db: IDBDatabase, clave: CryptoKey, mo
         const escritura = store.put(registro);
         escritura.onsuccess = () => resolve();
         escritura.onerror = () => reject(escritura.error);
+    });
+}
+
+// ===== Cola de descargas de fichas — Sesión 37 =====
+export interface Descarga {
+    modeloId: string;
+    estado: 'pendiente' | 'listo';
+}
+
+/** Anota (o reinicia a «pendiente») la descarga de varios modelos. */
+export function encolarDescargas(db: IDBDatabase, ids: string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('descargas', 'readwrite');
+        const store = tx.objectStore('descargas');
+        ids.forEach((modeloId) => store.put({ modeloId, estado: 'pendiente' } satisfies Descarga));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+export function obtenerDescargas(db: IDBDatabase): Promise<Descarga[]> {
+    return new Promise((resolve, reject) => {
+        const peticion = db.transaction('descargas', 'readonly').objectStore('descargas').getAll();
+        peticion.onsuccess = () => resolve(peticion.result as Descarga[]);
+        peticion.onerror = () => reject(peticion.error);
+    });
+}
+
+export function marcarDescargaLista(db: IDBDatabase, modeloId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('descargas', 'readwrite');
+        tx.objectStore('descargas').put({ modeloId, estado: 'listo' } satisfies Descarga);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
     });
 }

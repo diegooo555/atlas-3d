@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="manifest" href="/manifest.json">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>pwa-ar-objetos3d</title>
+  <title>Atlas 3D de Arquitectura de Software</title>
 </head>
 
 <body>
@@ -23,6 +23,21 @@
     </div>
     <p class="aviso-demo">Visor de prueba: un cubo, no un modelo real. Con la cámara de fondo NO es realidad aumentada
       todavía: el cubo no está anclado a nada del mundo, solo se dibuja encima del video.</p>
+  </section>
+  <!-- Sesión 37: fichas descargables, avisos y Background Sync -->
+  <section class="fichas-zona">
+    <h3>Fichas de estudio</h3>
+    <div class="fichas-barra">
+      <button type="button" id="btn-avisos">🔔 Activar avisos</button>
+      <span id="estado-avisos" class="estado-avisos"></span>
+    </div>
+    <div class="fichas-barra">
+      <button type="button" id="btn-descargar">⬇ Descargar fichas para usar sin conexión</button>
+      <progress id="progreso-descarga" max="3" value="0" hidden></progress>
+    </div>
+    <p id="estado-descarga" class="estado-descarga" role="status"></p>
+    <ul id="tarjetas" class="tarjetas"></ul>
+    <div id="ficha-abierta" class="ficha-abierta" hidden></div>
   </section>
   <div id="app"></div>
 

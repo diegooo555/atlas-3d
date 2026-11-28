@@ -104,3 +104,78 @@ body {
   position: relative;
   z-index: 1;
 }
+/* Sesión 37: fichas descargables, avisos y progreso */
+.fichas-zona {
+  width: 100%;
+  max-width: 40em;
+  margin: 1.2em auto 0;
+  padding: 0 1em;
+  box-sizing: border-box;
+}
+
+.fichas-barra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5em;
+  align-items: center;
+  margin-bottom: .6em;
+}
+
+.fichas-zona button {
+  background: #162038;
+  color: #e8e2cf;
+  border: 1px solid #2a3550;
+  border-radius: 8px;
+  padding: .45em .8em;
+  cursor: pointer;
+}
+
+.fichas-zona button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.fichas-zona progress {
+  flex: 1;
+  min-width: 8em;
+}
+
+.estado-avisos,
+.estado-descarga {
+  font-size: .85em;
+  color: #9fb0d0;
+}
+
+.tarjetas {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: .6em;
+}
+
+.tarjeta {
+  border: 1px solid #2a3550;
+  border-radius: 10px;
+  padding: .6em .8em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5em;
+}
+
+.tarjeta.destacada {
+  border-color: #d9a441;
+  box-shadow: 0 0 0 2px #d9a44155;
+}
+
+.insignia-offline {
+  font-size: .75em;
+  color: #7fd19b;
+}
+
+.ficha-abierta {
+  border: 1px solid #2a3550;
+  border-radius: 10px;
+  padding: .6em .9em;
+  font-size: .9em;
+}
