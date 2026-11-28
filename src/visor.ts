@@ -110,6 +110,9 @@ export function crearVisor(contenedor: HTMLElement): Visor {
     let objetivoX = 0;
     let objetivoY = 0;
     let porSensores = false;
+    // Sesión 42: dibujo bajo demanda. «sucio» dice «hay algo nuevo que dibujar»; quien cambia la escena
+    // (pieza, modelo, tamaño, fondo, sensores, salir de AR) la levanta y el bucle dibuja solo entonces.
+    let sucio = true;
 
     function ajustarTamano() {
         // Durante la sesión XR el tamaño del canvas lo decide el visor XR, no la página.
@@ -119,6 +122,7 @@ export function crearVisor(contenedor: HTMLElement): Visor {
         renderer.setSize(ancho, alto);
         camara.aspect = ancho / alto;
         camara.updateProjectionMatrix();
+        sucio = true;
     }
     ajustarTamano();
     window.addEventListener("resize", ajustarTamano);
@@ -130,9 +134,13 @@ export function crearVisor(contenedor: HTMLElement): Visor {
             // Interpolación: alcanza el objetivo poco a poco (filtra el temblor del sensor).
             grupo.rotation.x += (objetivoX - grupo.rotation.x) * 0.15;
             grupo.rotation.y += (objetivoY - grupo.rotation.y) * 0.15;
+            sucio = true; // con sensores la escena se mueve sola
         }
-        controles.update();
-        renderer.render(escena, camara);
+        const camaraSeMovio = controles.update(); // true mientras el usuario (o la inercia) mueve la cámara
+        if (sucio || camaraSeMovio) {
+            sucio = false;
+            renderer.render(escena, camara);
+        }
     }
     bucle();
 
@@ -163,12 +171,14 @@ export function crearVisor(contenedor: HTMLElement): Visor {
             controles.target.set(0, 0, 0);
             controles.update();
         }
+        sucio = true;
     }
 
     function seleccionar(id: string | null) {
         if (!modelo) return;
         piezaElegida = id !== null && modelo.piezas.has(id) ? id : null;
         modelo.resaltar(piezaElegida);
+        sucio = true;
     }
 
     // ── Sesión 40: elegir una pieza tocándola (solo fuera de AR) ──
@@ -204,6 +214,7 @@ export function crearVisor(contenedor: HTMLElement): Visor {
         } catch (err) {
             // Si el visor XR no pudo tomar la sesión, el visor normal vuelve a andar.
             renderer.xr.enabled = false;
+            sucio = true;
             bucle();
             throw err;
         }
@@ -453,6 +464,7 @@ export function crearVisor(contenedor: HTMLElement): Visor {
                     anotar("fin-6-tamano");
                     ajustarTamano(); // el visor XR cambió el tamaño del canvas
                     anotar("fin-7-bucle");
+                    sucio = true;
                     bucle(); // vuelve el requestAnimationFrame normal
                     anotar(PASO_FINAL);
                 }, MS_ESPERA_SALIDA);
@@ -473,12 +485,14 @@ export function crearVisor(contenedor: HTMLElement): Visor {
             porSensores = activo;
             controles.enabled = !activo;
             if (!activo) grupo.rotation.set(0, 0, 0);
+            sucio = true;
         },
         rotacionActualGrados() {
             return { x: aGrados(grupo.rotation.x), y: aGrados(grupo.rotation.y) };
         },
         fondoTransparente(activo) {
             escena.background = activo ? null : COLOR_FONDO;
+            sucio = true;
         },
         mostrarModelo,
         seleccionar,

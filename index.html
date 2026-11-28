@@ -6,12 +6,16 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="manifest" href="/manifest.json">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Sesión 42: lo que un buscador muestra bajo el título (Lighthouse, SEO) -->
+  <meta name="description" content="Catálogo interactivo en 3D de patrones de arquitectura de software (MVC, capas y microservicios), con realidad aumentada y uso sin conexión." />
   <title>Atlas 3D de Arquitectura de Software</title>
 </head>
 
 <body>
   <!-- Sesión 41: banda de conexión (solo aparece sin red o justo al volver) -->
   <p id="estado-conexion" class="estado-conexion" role="status" hidden></p>
+  <!-- Sesión 42: el contenido principal (Lighthouse, accesibilidad: un lector de pantalla salta directo aquí) -->
+  <main class="contenido">
   <section class="visor-zona">
     <div class="visor-barra">
       <button type="button" id="btn-orientacion">📱 Rotar con el teléfono</button>
@@ -25,11 +29,14 @@
       <video id="fondo-camara" class="fondo-camara" playsinline muted hidden></video>
     </div>
     <!-- Sesión 40: catálogo de modelos de arquitectura (todo se genera desde src/modelos/) -->
-    <div id="tabs-modelo" class="tabs-modelo" role="group" aria-label="Modelos de arquitectura"></div>
-    <p id="resumen-modelo" class="resumen-modelo"></p>
-    <div id="leyenda" class="leyenda" aria-label="Colores por rol"></div>
-    <div id="chips-piezas" class="chips-piezas" role="group" aria-label="Piezas del modelo"></div>
-    <div id="detalle-pieza" class="detalle-pieza" aria-live="polite"></div>
+    <!-- Sesión 42: el panel se llena con JavaScript; .modelo-panel le reserva el alto para que no empuje lo de abajo -->
+    <div class="modelo-panel">
+      <div id="tabs-modelo" class="tabs-modelo" role="group" aria-label="Modelos de arquitectura"></div>
+      <p id="resumen-modelo" class="resumen-modelo"></p>
+      <div id="leyenda" class="leyenda" aria-label="Colores por rol"></div>
+      <div id="chips-piezas" class="chips-piezas" role="group" aria-label="Piezas del modelo"></div>
+      <div id="detalle-pieza" class="detalle-pieza" aria-live="polite"></div>
+    </div>
     <!-- Sesión 38: soporte de realidad aumentada (WebXR) -->
     <p id="estado-ar" class="estado-ar" role="status">Comprobando si este dispositivo admite realidad aumentada…</p>
     <details class="diag-ar">
@@ -78,6 +85,7 @@
       <span id="estado-instalacion" class="estado-instalacion" role="status"></span>
     </div>
   </section>
+  </main>
   <div id="app"></div>
 
   <script type="module" src="/src/main.ts"></script>

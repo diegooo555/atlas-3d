@@ -299,3 +299,12 @@ body {
   font-size: .85em;
   color: #9fb0d0;
 }
+
+/* Sesión 42: Lighthouse. El <main> repite la columna centrada del body (si no, la página se deforma). */
+.contenido { width: 100%; display: flex; flex-direction: column; align-items: center; }
+
+/* Reservar el espacio de lo que JavaScript dibuja tarde: sin esto, todo lo de abajo saltaba (CLS). */
+.modelo-panel { min-height: 25em; }
+/* El visor también se llena con JavaScript (el canvas llega tarde): su alto se reserva con la misma
+   proporción que usa visor.ts (alto = 0,6 × ancho, es decir 5 : 3). */
+.visor { aspect-ratio: 5 / 3; }
