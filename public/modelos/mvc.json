@@ -1,0 +1,13 @@
+{
+  "id": "mvc",
+  "nombre": "Patrón MVC",
+  "resumen": "Separa la aplicación en Modelo (datos y reglas), Vista (lo que ve el usuario) y Controlador (traduce las acciones del usuario en cambios del modelo).",
+  "cuandoUsarla": "Interfaces con varias vistas sobre los mismos datos, o cuando se quiere probar la lógica sin depender de la interfaz.",
+  "riesgo": "Controladores «gordos»: si toda la lógica termina en el controlador, la separación existe solo de nombre.",
+  "piezas": {
+    "usuario": "Origina las acciones: un toque, un clic, un formulario enviado.",
+    "vista": "Muestra el estado del modelo y convierte cada gesto en una acción para el controlador. No guarda datos ni decide nada.",
+    "controlador": "Interpreta cada acción y decide qué cambio pedirle al modelo. Es el único que orquesta; si crece demasiado, hay que partirlo.",
+    "modelo": "Guarda el estado y aplica las reglas del negocio. Cuando cambia, avisa a quien escuche sin saber que es una vista."
+  }
+}

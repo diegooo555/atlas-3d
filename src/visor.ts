@@ -1,11 +1,16 @@
 // visor.ts — escena de Three.js del Atlas 3D (Sesión 35).
-// El catálogo real de modelos 3D todavía no existe, así que el visor muestra
-// un CUBO DE PRUEBA: sirve para comprobar que los sensores mueven algo.
+// Sesión 40: el cubo de prueba se va. El visor muestra un modelo de arquitectura
+// (src/modelos/) ya normalizado a 1,6 con la base en -0,8, así que toda la lógica
+// de AR de las sesiones 38 y 39 sigue valiendo sin cambios.
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { capacidadesDe } from "./xr";
 import type { CapacidadesAR } from "./xr";
 import { crearGestos } from "./gestos";
+import { construirModelo } from "./modelos/constructor";
+import type { ModeloConstruido } from "./modelos/constructor";
+import type { DefinicionModelo } from "./modelos/tipos";
+import { anotar, PASO_FINAL } from "./rastro";
 
 // ── Sesión 39: estado de la colocación en AR ─────────────────────────────────
 
@@ -34,13 +39,18 @@ export interface OpcionesAR {
     alTerminar: () => void;
 }
 
-const ESCALA_INICIAL = 0.25; // el cubo de 1,6 m queda en 40 cm
+const ESCALA_INICIAL = 0.25; // el modelo de 1,6 m queda en 40 cm
 const ESCALA_MIN = 0.1;
 const ESCALA_MAX = 1;
 const CADA_CUANTOS_FOTOGRAMAS = 2; // el hit-test se consulta un fotograma de cada dos: basta para una retícula fluida
 const MS_HASTA_PLAN_B = 6000; // sin superficie tanto tiempo: se avisa y el toque coloca delante de la mirada
 const CONSULTAS_SIN_IMPACTO = 8; // consultas seguidas sin superficie antes de ocultar la retícula (evita parpadeos)
-const MITAD = 0.8; // medio cubo: para que apoye la base (y no el centro) en la superficie
+const MITAD = 0.8; // medio modelo normalizado: para que apoye la base (y no el centro) en la superficie
+const ESCALA_VISTA = 1; // tamaño del modelo en la vista normal
+const DISTANCIA_VISTA = 2.4; // distancia de la cámara de la vista normal (cada modelo la ajusta con `distancia`)
+const MS_ESPERA_SALIDA = 250; // tras salir de AR, espera antes del primer fotograma normal
+const TOQUE_MAX_PX = 8; // un dedo que se mueve más que esto está girando la vista, no tocando
+const TOQUE_MAX_MS = 600; // una pulsación más larga que esto no es un toque
 
 export interface Visor {
     /** Fija la rotación objetivo del modelo (radianes). El visor la alcanza suavemente. */
@@ -49,11 +59,17 @@ export interface Visor {
     controlPorSensores(activo: boolean): void;
     /** Rotación actual del modelo, en grados (para mostrarla en pantalla). */
     rotacionActualGrados(): { x: number; y: number };
+    /** Sesión 40: cambia el modelo que se muestra (y suelta la pieza elegida). */
+    mostrarModelo(def: DefinicionModelo): void;
+    /** Sesión 40: resalta una pieza (null: ninguna). No avisa a alTocarPieza. */
+    seleccionar(id: string | null): void;
+    /** Sesión 40: avisa cuando el usuario elige (o suelta) una pieza tocando el modelo. */
+    alTocarPieza(cb: (id: string | null) => void): void;
     /** true: sin color de fondo (se ve el video detrás). false: fondo azul oscuro. */
     fondoTransparente(activo: boolean): void;
     /**
      * Sesiones 38 y 39: conecta el visor a una sesión WebXR immersive-ar ya concedida.
-     * Busca superficies (hit-test), coloca el cubo con un toque, lo ancla y activa los gestos.
+     * Busca superficies (hit-test), coloca el modelo con un toque, lo ancla y activa los gestos.
      * Devuelve las capacidades que de verdad funcionan en esta sesión.
      * opciones.alTerminar se llama cuando la sesión termina (botón «Salir», sistema o error),
      * después de devolver el visor a su estado anterior.
@@ -68,7 +84,7 @@ export function crearVisor(contenedor: HTMLElement): Visor {
     escena.background = COLOR_FONDO;
 
     const camara = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
-    camara.position.set(0, 0, 4);
+    camara.position.set(0, 0, DISTANCIA_VISTA);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setClearColor(0x000000, 0);
@@ -84,15 +100,7 @@ export function crearVisor(contenedor: HTMLElement): Visor {
     // `grupo` es el objeto con lo que decide el usuario (mover, girar, escalar).
     const raiz = new THREE.Group();
     const grupo = new THREE.Group();
-    const cubo = new THREE.Mesh(
-        new THREE.BoxGeometry(1.6, 1.6, 1.6),
-        new THREE.MeshStandardMaterial({ color: 0xffcc29, roughness: 0.45 })
-    );
-    const aristas = new THREE.LineSegments(
-        new THREE.EdgesGeometry(cubo.geometry),
-        new THREE.LineBasicMaterial({ color: 0x0b1220 })
-    );
-    grupo.add(cubo, aristas);
+    grupo.scale.setScalar(ESCALA_VISTA);
     raiz.add(grupo);
     escena.add(raiz);
 
@@ -131,6 +139,61 @@ export function crearVisor(contenedor: HTMLElement): Visor {
     // ── Sesión 38: realidad aumentada con WebXR ──────────────────────────────
     const aGrados = (r: number) => Math.round((r * 180) / Math.PI);
     let sesionAR: XRSession | null = null;
+
+    // ── Sesión 40: el modelo que se muestra y la pieza elegida ──────────────
+    let modelo: ModeloConstruido | null = null;
+    let centroY = 0; // altura del centro del modelo normalizado
+    let piezaElegida: string | null = null;
+
+    function mostrarModelo(def: DefinicionModelo) {
+        if (modelo) {
+            grupo.remove(modelo.raiz);
+            modelo.destruir();
+        }
+        modelo = construirModelo(def);
+        grupo.add(modelo.raiz);
+        centroY = modelo.centroY;
+        piezaElegida = null;
+        if (!sesionAR) {
+            modelo.raiz.position.y = -centroY; // en la vista normal el modelo gira alrededor de su centro; en AR, apoyado por la base
+            grupo.rotation.set(0, 0, 0);
+            const elev = ((def.elevacion ?? 30) * Math.PI) / 180;
+            const dist = DISTANCIA_VISTA * (def.distancia ?? 1);
+            camara.position.set(0, dist * Math.sin(elev), dist * Math.cos(elev));
+            controles.target.set(0, 0, 0);
+            controles.update();
+        }
+    }
+
+    function seleccionar(id: string | null) {
+        if (!modelo) return;
+        piezaElegida = id !== null && modelo.piezas.has(id) ? id : null;
+        modelo.resaltar(piezaElegida);
+    }
+
+    // ── Sesión 40: elegir una pieza tocándola (solo fuera de AR) ──
+    const rayoToque = new THREE.Raycaster();
+    let avisarToque: ((id: string | null) => void) | null = null;
+    let inicioToque: { x: number; y: number; t: number } | null = null;
+    const lienzo = renderer.domElement;
+    const alPulsar = (ev: PointerEvent) => {
+        inicioToque = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+    };
+    const alSoltar = (ev: PointerEvent) => {
+        const ini = inicioToque;
+        inicioToque = null;
+        // Un arrastre (girar la vista) no es un toque: se mide cuánto se movió el dedo.
+        if (!ini || sesionAR || !modelo) return;
+        if (Math.hypot(ev.clientX - ini.x, ev.clientY - ini.y) > TOQUE_MAX_PX || performance.now() - ini.t > TOQUE_MAX_MS) return;
+        const caja = lienzo.getBoundingClientRect();
+        rayoToque.setFromCamera(new THREE.Vector2(((ev.clientX - caja.left) / caja.width) * 2 - 1, -((ev.clientY - caja.top) / caja.height) * 2 + 1), camara);
+        const impactos = rayoToque.intersectObjects([...modelo.piezas.values()], false);
+        const id = (impactos[0]?.object.userData.piezaId as string | undefined) ?? null;
+        seleccionar(id === piezaElegida ? null : id); // volver a tocar la misma pieza la suelta
+        avisarToque?.(piezaElegida);
+    };
+    lienzo.addEventListener("pointerdown", alPulsar);
+    lienzo.addEventListener("pointerup", alSoltar);
 
     async function entrarEnAR(sesion: XRSession, opciones: OpcionesAR): Promise<CapacidadesAR> {
         cancelAnimationFrame(animacion); // en AR NO manda requestAnimationFrame: manda el reloj del visor XR
@@ -184,13 +247,14 @@ export function crearVisor(contenedor: HTMLElement): Visor {
 
         // `raiz` deja de calcular su matriz sola: se la damos nosotros desde la superficie o el ancla.
         raiz.matrixAutoUpdate = false;
+        if (modelo) modelo.raiz.position.y = 0; // en AR el modelo se apoya por la base (en -0,8), como el cubo
         grupo.position.set(0, MITAD * escala, 0); // la base apoya en la superficie
         grupo.scale.setScalar(escala);
         grupo.rotation.set(0, 0, 0);
         if (caps.hitTest) {
             raiz.visible = false; // hasta colocarlo, solo se ve la retícula
         } else {
-            // Plan B sin hit-test: el cubo a 1,5 m delante, un poco por debajo de la vista.
+            // Plan B sin hit-test: el modelo a 1,5 m delante, un poco por debajo de la vista.
             raiz.matrix.makeTranslation(0, -0.5, -1.5);
             raiz.visible = true;
         }
@@ -238,7 +302,7 @@ export function crearVisor(contenedor: HTMLElement): Visor {
             if (fuente && !hayImpacto && !sinSuperficie) return; // no hay superficie: no se coloca en el aire (todavía)
             if (hayImpacto) {
                 impacto = ultimoImpacto;
-                raiz.matrix.copy(reticula.matrix); // el cubo aparece donde está la retícula
+                raiz.matrix.copy(reticula.matrix); // el modelo aparece donde está la retícula
             } else {
                 // Plan B (sin hit-test, o sin superficie tras varios segundos): delante de la mirada actual, a 1,5 m.
                 const posicion = new THREE.Vector3().setFromMatrixPosition(camara.matrixWorld);
@@ -353,15 +417,21 @@ export function crearVisor(contenedor: HTMLElement): Visor {
             renderer.render(escena, camara);
         });
 
+        anotar("activa");
         sesion.addEventListener(
             "end",
             () => {
+                // Cada paso se anota ANTES de hacerlo: si la pestaña muere, el último nombre dice dónde.
+                anotar("fin-1-bucle");
                 renderer.setAnimationLoop(null);
                 renderer.xr.enabled = false;
                 sesionAR = null;
                 gestos.destruir();
-                fuente?.cancel();
-                ancla?.delete();
+                anotar("fin-2-fuente");
+                try { fuente?.cancel(); } catch { /* la sesión ya terminó */ }
+                anotar("fin-3-ancla");
+                try { ancla?.delete(); } catch { /* idem */ }
+                anotar("fin-4-escena");
                 escena.remove(reticula);
                 reticula.geometry.dispose();
                 (reticula.material as THREE.Material).dispose();
@@ -371,11 +441,21 @@ export function crearVisor(contenedor: HTMLElement): Visor {
                 raiz.matrix.identity();
                 raiz.visible = true;
                 grupo.position.set(0, 0, 0);
-                grupo.scale.set(1, 1, 1);
+                grupo.scale.setScalar(ESCALA_VISTA);
+                if (modelo) modelo.raiz.position.y = -centroY;
                 grupo.rotation.set(0, 0, 0);
-                ajustarTamano(); // el visor XR cambió el tamaño del canvas
-                bucle(); // vuelve el requestAnimationFrame normal
                 opciones.alTerminar();
+                // El primer fotograma normal NO se dibuja en el mismo instante en que el navegador desmonta
+                // la cámara y el visor XR: se espera un momento para que termine de soltar sus recursos.
+                anotar("fin-5-espera");
+                window.setTimeout(() => {
+                    if (sesionAR) return; // ya empezó otra sesión AR: el bucle lo lleva ella
+                    anotar("fin-6-tamano");
+                    ajustarTamano(); // el visor XR cambió el tamaño del canvas
+                    anotar("fin-7-bucle");
+                    bucle(); // vuelve el requestAnimationFrame normal
+                    anotar(PASO_FINAL);
+                }, MS_ESPERA_SALIDA);
             },
             { once: true }
         );
@@ -400,11 +480,19 @@ export function crearVisor(contenedor: HTMLElement): Visor {
         fondoTransparente(activo) {
             escena.background = activo ? null : COLOR_FONDO;
         },
+        mostrarModelo,
+        seleccionar,
+        alTocarPieza(cb) {
+            avisarToque = cb;
+        },
         entrarEnAR,
         destruir() {
             void sesionAR?.end();
             cancelAnimationFrame(animacion);
             window.removeEventListener("resize", ajustarTamano);
+            lienzo.removeEventListener("pointerdown", alPulsar);
+            lienzo.removeEventListener("pointerup", alSoltar);
+            modelo?.destruir();
             controles.dispose();
             renderer.dispose();
             renderer.domElement.remove();

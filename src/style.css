@@ -221,3 +221,24 @@ body {
 /* touch-action: none evita que el navegador tome el arrastre como desplazamiento o el pellizco como zoom. */
 .xr-overlay { touch-action: none; }
 .xr-overlay button { background: #ffcc29; color: #0b1220; border: 0; border-radius: 8px; padding: .7em 1.2em; font-weight: 700; cursor: pointer; }
+
+/* Sesión 40: catálogo de modelos, leyenda, piezas y detalle */
+.tabs-modelo { display: flex; flex-wrap: wrap; gap: .4em; margin-top: .7em; }
+.tabs-modelo .tab, .chips-piezas .chip { background: #162038; color: #e8e2cf; border: 1px solid #2a3550; cursor: pointer; }
+.tabs-modelo .tab { border-radius: 8px 8px 0 0; padding: .45em .9em; }
+.tabs-modelo .tab[aria-pressed="true"] { background: #ffcc29; color: #0b1220; border-color: #ffcc29; font-weight: 700; }
+.resumen-modelo { font-size: .9em; margin: .5em 0; }
+.leyenda { display: flex; flex-wrap: wrap; gap: .3em .9em; font-size: .78em; color: #9fb0d0; margin-bottom: .5em; }
+.leyenda-item i, .chip i { display: inline-block; width: .8em; height: .8em; border-radius: 3px; margin-right: .35em; vertical-align: -.05em; }
+.chips-piezas { display: flex; flex-wrap: wrap; gap: .35em; margin-bottom: .5em; }
+.chips-piezas .chip { border-radius: 999px; padding: .3em .75em; font-size: .85em; }
+.chips-piezas .chip[aria-pressed="true"] { border-color: #ffcc29; box-shadow: 0 0 0 2px #ffcc2955; }
+.detalle-pieza { border: 1px solid #2a3550; border-radius: 10px; padding: .6em .9em; font-size: .9em; margin-bottom: .6em; }
+.detalle-pieza h4 { margin: 0 0 .2em; }
+.detalle-pieza .rol { font-size: .8em; color: #9fb0d0; }
+.detalle-pieza p { margin: .4em 0; }
+.detalle-pieza .sin-ficha { color: #d9a441; font-size: .85em; }
+/* En AR: ◀ ▶ y el nombre y la función de la pieza elegida */
+.xr-overlay .xr-piezas { display: flex; align-items: center; gap: .5em; max-width: 94vw; }
+.xr-overlay .xr-piezas p { flex: 1; text-align: center; }
+.xr-overlay .xr-piezas button { padding: .7em 1em; }

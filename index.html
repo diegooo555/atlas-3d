@@ -22,6 +22,12 @@
     <div id="visor" class="visor">
       <video id="fondo-camara" class="fondo-camara" playsinline muted hidden></video>
     </div>
+    <!-- Sesión 40: catálogo de modelos de arquitectura (todo se genera desde src/modelos/) -->
+    <div id="tabs-modelo" class="tabs-modelo" role="group" aria-label="Modelos de arquitectura"></div>
+    <p id="resumen-modelo" class="resumen-modelo"></p>
+    <div id="leyenda" class="leyenda" aria-label="Colores por rol"></div>
+    <div id="chips-piezas" class="chips-piezas" role="group" aria-label="Piezas del modelo"></div>
+    <div id="detalle-pieza" class="detalle-pieza" aria-live="polite"></div>
     <!-- Sesión 38: soporte de realidad aumentada (WebXR) -->
     <p id="estado-ar" class="estado-ar" role="status">Comprobando si este dispositivo admite realidad aumentada…</p>
     <details class="diag-ar">
@@ -32,13 +38,20 @@
     <!-- Mientras dura la sesión AR, el navegador dibuja este elemento sobre la cámara (dom-overlay). -->
     <div id="xr-overlay" class="xr-overlay">
       <p id="xr-estado">Sesión de realidad aumentada activa</p>
-      <!-- Sesión 39: lo que concedió la sesión y la posición del cubo (depuración y pruebas). -->
+      <!-- Sesión 39: lo que concedió la sesión y la posición del modelo (depuración y pruebas). -->
       <p id="xr-datos" class="xr-datos"></p>
+      <!-- Sesión 40: en AR tocar coloca, así que las piezas se recorren con ◀ ▶ -->
+      <div class="xr-piezas">
+        <button type="button" id="btn-pieza-ant" aria-label="Pieza anterior">◀</button>
+        <p id="xr-pieza"></p>
+        <button type="button" id="btn-pieza-sig" aria-label="Pieza siguiente">▶</button>
+      </div>
       <button type="button" id="btn-salir-ar">Salir de AR</button>
     </div>
-    <p class="aviso-demo">Visor de prueba: un cubo, no un modelo real. La cámara de fondo NO es realidad aumentada: el
-      cubo solo se dibuja encima del video. Con «Ver en AR» el anillo verde busca una superficie
-      real: toca para apoyar el cubo, y arrástralo, gíralo o pellízcalo con los dedos.</p>
+    <p class="aviso-demo">Toca una pieza del modelo (o elígela en la lista) para leer qué hace. La cámara de fondo NO es
+      realidad aumentada: el modelo solo se dibuja encima del video. Con «Ver en AR» el anillo verde busca una
+      superficie real: toca para apoyar el modelo, arrástralo, gíralo o pellízcalo con los dedos, y recorre sus
+      piezas con ◀ ▶.</p>
   </section>
   <!-- Sesión 37: fichas descargables, avisos y Background Sync -->
   <section class="fichas-zona">

@@ -7,10 +7,31 @@ export interface RegistroProgreso {
     notaIv: Uint8Array | null;
 }
 
+/** Sesión 40: correspondencia entre los identificadores viejos y los nuevos. */
+export const RENOMBRES_V3: Record<string, string> = {
+    'modelo-demo-1': 'mvc',
+    'modelo-demo-2': 'capas',
+    'modelo-demo-3': 'microservicios',
+};
+
+/** Reescribe los registros con identificador viejo. En «descargas» vuelven a «pendiente»: la caché de modelos aún no tiene los archivos nuevos. */
+function migrarIdentificadores(store: IDBObjectStore, reiniciarDescarga: boolean) {
+    for (const [viejo, nuevo] of Object.entries(RENOMBRES_V3)) {
+        const lectura = store.get(viejo);
+        lectura.onsuccess = () => {
+            const registro = lectura.result;
+            if (!registro) return;
+            store.delete(viejo);
+            store.put({ ...registro, modeloId: nuevo, ...(reiniciarDescarga ? { estado: 'pendiente' } : {}) });
+        };
+    }
+}
+
 export function abrirBaseDeDatos(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
         // Sesión 37: versión 2, con el almacén nuevo «descargas».
-        const peticion = indexedDB.open('atlas3d-progreso-db', 2);
+        // Sesión 40: versión 3, los modelos cambian de identificador (modelo-demo-1 → mvc…).
+        const peticion = indexedDB.open('atlas3d-progreso-db', 3);
         peticion.onupgradeneeded = (event) => {
             const db = (event.target as IDBOpenDBRequest).result;
             // Migración por tramos (Sesión 22/26): quien viene de la v1 conserva su
@@ -22,6 +43,13 @@ export function abrirBaseDeDatos(): Promise<IDBDatabase> {
             }
             if (event.oldVersion < 2) {
                 db.createObjectStore('descargas', { keyPath: 'modeloId' });
+            }
+            if (event.oldVersion >= 1 && event.oldVersion < 3) {
+                // La clave de un registro no se puede cambiar: se lee cada registro viejo, se escribe
+                // con la clave nueva y se borra el viejo, todo dentro de la transacción de la migración.
+                const tx = (event.target as IDBOpenDBRequest).transaction!;
+                migrarIdentificadores(tx.objectStore('progreso'), false);
+                migrarIdentificadores(tx.objectStore('descargas'), true);
             }
         };
         peticion.onsuccess = () => resolve(peticion.result);

@@ -1,0 +1,18 @@
+{
+  "id": "microservicios",
+  "nombre": "Microservicios",
+  "resumen": "Divide el sistema en servicios pequeños e independientes, cada uno con su propia base de datos, que se comunican por la red (HTTP o mensajería).",
+  "cuandoUsarla": "Sistemas grandes con varios equipos que necesitan desplegar y escalar partes por separado.",
+  "riesgo": "Complejidad distribuida: fallos de red, consistencia eventual y observabilidad pasan a ser problemas de todos los días.",
+  "piezas": {
+    "cliente": "Aplicación web o móvil. Solo conoce la dirección del API Gateway.",
+    "gateway": "Punto de entrada único: enruta, autentica y limita el tráfico. Oculta al cliente cuántos servicios hay.",
+    "usuarios": "Gestiona cuentas y permisos. Se despliega y escala por separado del resto.",
+    "pedidos": "Crea y sigue los pedidos. Al confirmar uno publica un evento en el bus; no llama a Pagos directamente.",
+    "bus": "Recibe eventos y los entrega a los servicios suscritos. Si un receptor está caído, el mensaje espera.",
+    "pagos": "Cobra los pedidos que llegan por el bus. Si falla, Pedidos sigue funcionando.",
+    "bd-usuarios": "Datos de Usuarios. Ningún otro servicio la consulta: si los necesita, se los pide al servicio.",
+    "bd-pedidos": "Datos de Pedidos, con el esquema que mejor le convenga a ese servicio.",
+    "bd-pagos": "Datos de Pagos. Separarla aísla los datos sensibles del resto del sistema."
+  }
+}

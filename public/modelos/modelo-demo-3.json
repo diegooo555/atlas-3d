@@ -1,8 +1,0 @@
-{
-  "id": "modelo-demo-3",
-  "nombre": "Microservicios",
-  "resumen": "Divide el sistema en servicios pequeños e independientes, cada uno con su propia base de datos, que se comunican por la red (HTTP o mensajería).",
-  "componentes": ["Servicios independientes", "API Gateway", "Bases de datos por servicio", "Mensajería o HTTP entre servicios"],
-  "cuandoUsarla": "Sistemas grandes con varios equipos que necesitan desplegar y escalar partes por separado.",
-  "riesgo": "Complejidad distribuida: fallos de red, consistencia eventual y observabilidad pasan a ser problemas de todos los días."
-}

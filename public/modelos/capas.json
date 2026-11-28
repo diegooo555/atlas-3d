@@ -1,0 +1,14 @@
+{
+  "id": "capas",
+  "nombre": "Arquitectura en capas",
+  "resumen": "Organiza el sistema en capas horizontales (presentación, negocio, datos), donde cada capa solo usa los servicios de la capa inmediatamente inferior.",
+  "cuandoUsarla": "Aplicaciones empresariales típicas, equipos que empiezan y sistemas donde se valora más el orden que el rendimiento extremo.",
+  "riesgo": "El «sumidero»: peticiones que atraviesan todas las capas sin que ninguna haga nada útil, añadiendo latencia y código ceremonial.",
+  "piezas": {
+    "usuario": "Quien usa la aplicación; solo ve la capa de presentación.",
+    "presentacion": "Pantallas, formularios y validaciones de forma. Nunca consulta datos por su cuenta: pide a la lógica de negocio.",
+    "negocio": "Aplica las reglas del dominio: valida, calcula y decide. No sabe si los datos vienen de una base, un archivo o un servicio.",
+    "acceso": "Traduce las peticiones de la lógica en consultas y devuelve objetos del dominio. Es la única capa que conoce el almacenamiento.",
+    "bd": "Almacenamiento permanente. Solo la capa de acceso a datos le habla."
+  }
+}

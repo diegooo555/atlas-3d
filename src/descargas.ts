@@ -2,14 +2,18 @@
 // Este módulo lo importan el Service Worker (sw.ts) y la página (main.ts):
 // como Vite empaqueta ambos, la lógica se escribe UNA sola vez.
 import { obtenerDescargas, marcarDescargaLista } from "./db";
+import type { Ficha } from "./modelos/tipos";
 
 export const ETIQUETA_SYNC = "descargar-modelos";
 export const CACHE_MODELOS = "modelos-3d";
 // BASE_URL vale «/» en local y «/nombre-del-repo/» en GitHub Pages: nunca escribas rutas absolutas a mano.
 export const urlDeModelo = (id: string) => `${import.meta.env.BASE_URL}modelos/${id}.json`;
 
-/** Las fichas que existen en public/modelos/. */
-export const MODELOS_IDS = ["modelo-demo-1", "modelo-demo-2", "modelo-demo-3"];
+/**
+ * Las fichas que existen en public/modelos/ (una por modelo del catálogo, src/modelos/index.ts).
+ * Se escriben aquí, y no importando el catálogo, para que el Service Worker no cargue los modelos.
+ */
+export const MODELOS_IDS = ["mvc", "capas", "microservicios"];
 
 export type AlProgresar = (hechos: number, total: number) => void | Promise<void>;
 
@@ -36,4 +40,26 @@ export async function descargarPendientes(db: IDBDatabase, alProgresar: AlProgre
     await alProgresar(hechos, total);
   }
   return descargadas;
+}
+
+/**
+ * Sesión 40: la ficha ampliada de un modelo, por tres caminos en orden:
+ * la caché «modelos-3d» (sirve sin conexión), la red y, si no hay ninguno, null
+ * (la página usa entonces solo el resumen que viaja en el código).
+ */
+export async function leerFicha(id: string): Promise<Ficha | null> {
+  try {
+    const cache = await caches.open(CACHE_MODELOS);
+    const guardada = await cache.match(urlDeModelo(id));
+    if (guardada) return (await guardada.json()) as Ficha;
+  } catch {
+    /* sin Cache Storage: se intenta la red */
+  }
+  try {
+    const resp = await fetch(urlDeModelo(id));
+    if (resp.ok) return (await resp.json()) as Ficha;
+  } catch {
+    /* sin red */
+  }
+  return null;
 }
