@@ -242,3 +242,60 @@ body {
 .xr-overlay .xr-piezas { display: flex; align-items: center; gap: .5em; max-width: 94vw; }
 .xr-overlay .xr-piezas p { flex: 1; text-align: center; }
 .xr-overlay .xr-piezas button { padding: .7em 1em; }
+
+/* Sesión 41: banda de conexión (pegada arriba para verse aunque la página esté desplazada) */
+.estado-conexion {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  width: 100%;
+  margin: 0;
+  padding: .55em 1em;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: .9em;
+  background: #3a2f10;
+  color: #ffd98a;
+  border-bottom: 1px solid #b8860b;
+}
+
+/* Sesión 41: instalación guiada */
+.instalar-zona {
+  width: 100%;
+  max-width: 40em;
+  margin: 1.2em auto 0;
+  padding: 0 1em;
+  box-sizing: border-box;
+}
+
+.instalar-zona h2 {
+  font-size: 1.15em;
+  margin: 0 0 .5em;
+}
+
+.instalar-barra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5em;
+  align-items: center;
+}
+
+#btn-instalar {
+  background: #ffcc29;
+  color: #0b1220;
+  border: 0;
+  border-radius: 8px;
+  padding: .6em 1.1em;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#btn-instalar:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
+.estado-instalacion {
+  font-size: .85em;
+  color: #9fb0d0;
+}

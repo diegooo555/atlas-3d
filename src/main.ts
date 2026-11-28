@@ -18,6 +18,8 @@ import { CATALOGO, modeloPorId } from "./modelos";
 import { ROLES } from "./modelos/tipos";
 import type { Ficha } from "./modelos/tipos";
 import { describirRastro, rastroInterrumpido } from "./rastro";
+import { iniciarInstalacion, pedirInstalacion, estadoInstalacion, instalacionRechazada } from "./instalar";
+import { iniciarConexion } from "./conexion";
 
 const panel = document.createElement('div');
 panel.style.cssText = 'padding:12px;font-family:sans-serif';
@@ -590,6 +592,61 @@ if ("serviceWorker" in navigator) {
 // porque el usuario acaba de pasar a otra ventana (la app instalada).
 window.addEventListener("appinstalled", () => {
   void mostrarAviso("Atlas 3D instalado", "Ya puedes abrir el Atlas desde tu pantalla de inicio.");
+});
+
+// Sesión 41: instalación guiada. El navegador decide cuándo es instalable; la página, cómo se ofrece.
+const btnInstalar = document.querySelector<HTMLButtonElement>("#btn-instalar")!;
+const estadoInstalacionEl = document.querySelector<HTMLElement>("#estado-instalacion")!;
+const TEXTO_INSTALACION = {
+  instalada: "✓ Estás usando Atlas 3D como app instalada.",
+  recienInstalada: "✓ Instalada. Ábrela desde su icono en la pantalla de inicio.",
+  instalable: "Puedes instalarla: se abre a pantalla completa, desde su icono, y funciona sin conexión.",
+  ios: "En iPhone y iPad no hay botón: en Safari toca Compartir y luego «Añadir a pantalla de inicio».",
+  rechazada: "Cancelaste la instalación. Chrome decide cuándo volver a ofrecerla; mientras tanto, usa el menú ⋮ → «Instalar app».",
+  noDisponible: "Este navegador no ofrece instalar desde la página. Si ya la instalaste, ábrela desde su icono; si no, usa el menú del navegador → «Instalar app».",
+};
+
+/** Una sola función decide qué se ve según el estado; se llama al arrancar y en cada cambio. */
+function pintarInstalacion(): void {
+  const estado = estadoInstalacion();
+  btnInstalar.hidden = estado !== "instalable";
+  estadoInstalacionEl.textContent =
+    estado === "instalada" ? TEXTO_INSTALACION.instalada
+    : estado === "recien-instalada" ? TEXTO_INSTALACION.recienInstalada
+    : estado === "instalable" ? TEXTO_INSTALACION.instalable
+    : estado === "ios" ? TEXTO_INSTALACION.ios
+    : instalacionRechazada() ? TEXTO_INSTALACION.rechazada
+    : TEXTO_INSTALACION.noDisponible;
+}
+
+btnInstalar.addEventListener("click", async () => {
+  btnInstalar.disabled = true;
+  try {
+    await pedirInstalacion(); // el resultado lo pinta pintarInstalacion() vía iniciarInstalacion
+  } finally {
+    btnInstalar.disabled = false;
+  }
+});
+iniciarInstalacion(pintarInstalacion);
+
+// Sesión 41: banda de conexión. Solo habla cuando el navegador afirma «sin conexión» (ese false sí es fiable).
+const estadoConexionEl = document.querySelector<HTMLElement>("#estado-conexion")!;
+let estuvoSinConexion = false;
+let temporizadorConexion: number | undefined;
+iniciarConexion((enLinea) => {
+  window.clearTimeout(temporizadorConexion);
+  if (!enLinea) {
+    estuvoSinConexion = true;
+    estadoConexionEl.hidden = false;
+    estadoConexionEl.textContent = "Sin conexión: los modelos y las fichas descargadas siguen disponibles.";
+  } else if (estuvoSinConexion) {
+    estuvoSinConexion = false;
+    estadoConexionEl.hidden = false;
+    estadoConexionEl.textContent = "Volvió la conexión.";
+    temporizadorConexion = window.setTimeout(() => { estadoConexionEl.hidden = true; }, 3000);
+  } else {
+    estadoConexionEl.hidden = true;
+  }
 });
 
 /** Tras una descarga, vuelve a leer la ficha del modelo actual (sin reconstruir el modelo ni soltar la pieza). */

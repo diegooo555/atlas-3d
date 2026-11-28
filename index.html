@@ -10,6 +10,8 @@
 </head>
 
 <body>
+  <!-- Sesión 41: banda de conexión (solo aparece sin red o justo al volver) -->
+  <p id="estado-conexion" class="estado-conexion" role="status" hidden></p>
   <section class="visor-zona">
     <div class="visor-barra">
       <button type="button" id="btn-orientacion">📱 Rotar con el teléfono</button>
@@ -67,6 +69,14 @@
     <p id="estado-descarga" class="estado-descarga" role="status"></p>
     <ul id="tarjetas" class="tarjetas"></ul>
     <div id="ficha-abierta" class="ficha-abierta" hidden></div>
+  </section>
+  <!-- Sesión 41: instalación guiada (beforeinstallprompt, estados e iOS) -->
+  <section class="instalar-zona" aria-labelledby="titulo-instalar">
+    <h2 id="titulo-instalar">Instalar la app</h2>
+    <div class="instalar-barra">
+      <button type="button" id="btn-instalar" hidden>⬇ Instalar Atlas 3D</button>
+      <span id="estado-instalacion" class="estado-instalacion" role="status"></span>
+    </div>
   </section>
   <div id="app"></div>
 
