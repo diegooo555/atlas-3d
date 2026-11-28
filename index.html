@@ -17,14 +17,15 @@
       <button type="button" id="btn-camara">📷 Cámara de fondo</button>
       <span id="lectura-visor" class="lectura-visor"></span>
     </div>
-    <p class="aviso-demo">Visor de prueba: un cubo, no un modelo real. Con la cámara de fondo NO es realidad aumentada
-      todavía: el cubo no está anclado a nada del mundo, solo se dibuja encima del video.</p>
+    <p id="aviso-visor" class="aviso-visor" role="status" hidden></p>
     <div id="visor" class="visor">
       <video id="fondo-camara" class="fondo-camara" playsinline muted hidden></video>
     </div>
-    <p class="aviso-demo">Visor de prueba: un cubo, no un modelo real. Arrastra con el ratón o el dedo para girarlo.</p>
+    <p class="aviso-demo">Visor de prueba: un cubo, no un modelo real. Con la cámara de fondo NO es realidad aumentada
+      todavía: el cubo no está anclado a nada del mundo, solo se dibuja encima del video.</p>
   </section>
   <div id="app"></div>
+
   <script type="module" src="/src/main.ts"></script>
 </body>
 
