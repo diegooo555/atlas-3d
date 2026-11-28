@@ -13,6 +13,7 @@ import {
 import { descargarPendientes, ETIQUETA_SYNC, MODELOS_IDS, urlDeModelo } from "./descargas";
 import { activarAvisos, describirEstadoAvisos, estadoAvisos, mostrarAviso } from "./avisos";
 import { diagnosticarAR, mensajeSoporteAR, pedirSesionAR, describirErrorAR } from "./xr";
+import type { EstadoAR } from "./visor";
 
 const panel = document.createElement('div');
 panel.style.cssText = 'padding:12px;font-family:sans-serif';
@@ -175,7 +176,7 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-// ── Sesión 38: realidad aumentada con WebXR (1/2) ───────────────────────────
+// ── Sesiones 38 y 39: realidad aumentada con WebXR ──────────────────────────
 const btnAR = document.querySelector<HTMLButtonElement>("#btn-ar")!;
 const estadoAR = document.querySelector<HTMLElement>("#estado-ar")!;
 const overlayAR = document.querySelector<HTMLElement>("#xr-overlay");
@@ -183,7 +184,64 @@ const btnSalirAR = document.querySelector<HTMLButtonElement>("#btn-salir-ar")!;
 const diagAR = document.querySelector<HTMLElement>("#diag-ar")!;
 const detallesAR = document.querySelector<HTMLDetailsElement>(".diag-ar")!;
 const btnRecomprobar = document.querySelector<HTMLButtonElement>("#btn-recomprobar")!;
+const xrEstado = document.querySelector<HTMLElement>("#xr-estado")!;
+const xrDatos = document.querySelector<HTMLElement>("#xr-datos")!;
 let sesionAR: XRSession | null = null;
+
+// ── Sesión 39: hit-test, retícula, anclas y gestos (2/2) ────────────────────
+// Texto de ayuda sobre la cámara según en qué punto va la colocación.
+function ayudaAR(e: EstadoAR): string {
+  if (!e.hitTest) return "Este dispositivo no ofrece hit-test: el cubo está a 1,5 m delante. Toca para traerlo delante de ti.";
+  switch (e.fase) {
+    case "buscando":
+      return e.sinSuperficie
+        ? "No encuentro superficies. Prueba con una zona con textura y buena luz, o toca la pantalla para colocar el cubo delante de ti."
+        : "Mueve el teléfono despacio hasta ver el anillo verde sobre una superficie.";
+    case "listo":
+      return "Toca la pantalla para colocar el cubo.";
+    case "colocado":
+      return e.overlay
+        ? "Arrastra para moverlo, gira con dos dedos, pellizca para el tamaño. Toca otro punto para recolocarlo."
+        : "Cubo colocado. Toca otro punto para recolocarlo.";
+  }
+}
+
+// Cada cambio del texto del overlay obliga al navegador a volver a dibujarlo
+// encima de la cámara, y eso cuesta. Por eso: (1) solo se escribe si el texto
+// cambió y (2) como máximo cada 200 ms (los gestos avisan decenas de veces por segundo).
+const INTERVALO_OVERLAY_MS = 200;
+let ultimoPintado = 0;
+let pendienteAR: EstadoAR | null = null;
+let temporizadorAR = 0;
+
+function pintarEstadoAR(e: EstadoAR): void {
+  const si = (v: boolean) => (v ? "sí" : "no");
+  const { x, y, z } = e.posicion;
+  const pos = e.fase === "colocado" ? `(${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}) m` : "—";
+  const ayuda = ayudaAR(e);
+  const datos =
+    `hit-test: ${si(e.hitTest)} · anclas: ${si(e.anclas)} · anclado: ${si(e.anclado)} · ` +
+    `fase: ${e.fase} · escala: ${e.escala.toFixed(2)} · giro: ${e.giroGrados}° · pos: ${pos} · ` +
+    `consultas: ${e.consultas} · resultados: ${e.resultados} · poses: ${e.impactos}`;
+  if (xrEstado.textContent !== ayuda) xrEstado.textContent = ayuda;
+  if (xrDatos.textContent !== datos) xrDatos.textContent = datos;
+}
+
+function mostrarEstadoAR(e: EstadoAR): void {
+  if (performance.now() - ultimoPintado >= INTERVALO_OVERLAY_MS) {
+    ultimoPintado = performance.now();
+    pintarEstadoAR(e);
+    return;
+  }
+  pendienteAR = e; // se pintará el último estado cuando venza el intervalo
+  if (temporizadorAR) return;
+  temporizadorAR = window.setTimeout(() => {
+    temporizadorAR = 0;
+    ultimoPintado = performance.now();
+    if (pendienteAR) pintarEstadoAR(pendienteAR);
+    pendienteAR = null;
+  }, INTERVALO_OVERLAY_MS);
+}
 
 // ¿Se puede? El botón solo se habilita si la respuesta es «sí». Se pregunta al
 // cargar, al pulsar «Comprobar de nuevo» y cuando el navegador avisa de que
@@ -211,15 +269,27 @@ btnAR.addEventListener("click", async () => {
     const sesion = await pedirSesionAR(overlayAR);
     sesionAR = sesion;
     btnAR.disabled = true;
-    await visor.entrarEnAR(sesion, () => {
-      sesionAR = null;
-      btnAR.disabled = false;
-      estadoAR.textContent = "La sesión de realidad aumentada terminó.";
+    const caps = await visor.entrarEnAR(sesion, {
+      overlay: overlayAR!,
+      alCambiar: mostrarEstadoAR,
+      alTerminar: () => {
+        sesionAR = null;
+        btnAR.disabled = false;
+        window.clearTimeout(temporizadorAR);
+        temporizadorAR = 0;
+        pendienteAR = null;
+        estadoAR.textContent = "La sesión de realidad aumentada terminó.";
+      },
     });
-    // domOverlayState existe solo si el navegador concedió la función «dom-overlay».
-    estadoAR.textContent = sesion.domOverlayState
-      ? "Sesión de realidad aumentada activa. Usa «Salir de AR» sobre la cámara."
-      : "Sesión de realidad aumentada activa. Este navegador no mostró el botón sobre la cámara: sal con el gesto de salida del sistema.";
+    // Pedir no es recibir: se dice en pantalla qué funciones no concedió el navegador.
+    const faltan = [
+      caps.overlay ? "" : "dom-overlay",
+      caps.hitTest ? "" : "hit-test",
+      caps.anclas ? "" : "anchors",
+    ].filter(Boolean);
+    estadoAR.textContent = faltan.length
+      ? `Sesión de realidad aumentada activa. El navegador no concedió: ${faltan.join(", ")}.`
+      : "Sesión de realidad aumentada activa. Usa «Salir de AR» sobre la cámara.";
   } catch (err) {
     sesionAR?.end().catch(() => {});
     sesionAR = null;
@@ -232,6 +302,9 @@ btnAR.addEventListener("click", async () => {
 btnSalirAR.addEventListener("click", () => {
   void sesionAR?.end();
 });
+// Un toque sobre un botón del overlay NO debe contar como «tocar para colocar»:
+// el navegador avisa con `beforexrselect` y basta cancelarlo.
+btnSalirAR.addEventListener("beforexrselect", (e) => e.preventDefault());
 
 // ── Sesión 37: fichas descargables, avisos y Background Sync ───────────────
 // Nombres de las fichas (las fichas completas viven en public/modelos/*.json y

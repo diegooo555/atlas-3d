@@ -32,11 +32,13 @@
     <!-- Mientras dura la sesión AR, el navegador dibuja este elemento sobre la cámara (dom-overlay). -->
     <div id="xr-overlay" class="xr-overlay">
       <p id="xr-estado">Sesión de realidad aumentada activa</p>
+      <!-- Sesión 39: lo que concedió la sesión y la posición del cubo (depuración y pruebas). -->
+      <p id="xr-datos" class="xr-datos"></p>
       <button type="button" id="btn-salir-ar">Salir de AR</button>
     </div>
     <p class="aviso-demo">Visor de prueba: un cubo, no un modelo real. La cámara de fondo NO es realidad aumentada: el
-      cubo solo se dibuja encima del video. Con «Ver en AR» el cubo queda en un punto del espacio, pero todavía flota:
-      no se apoya en ninguna superficie real.</p>
+      cubo solo se dibuja encima del video. Con «Ver en AR» el anillo verde busca una superficie
+      real: toca para apoyar el cubo, y arrástralo, gíralo o pellízcalo con los dedos.</p>
   </section>
   <!-- Sesión 37: fichas descargables, avisos y Background Sync -->
   <section class="fichas-zona">

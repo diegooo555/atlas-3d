@@ -3,6 +3,44 @@
 // un CUBO DE PRUEBA: sirve para comprobar que los sensores mueven algo.
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { capacidadesDe } from "./xr";
+import type { CapacidadesAR } from "./xr";
+import { crearGestos } from "./gestos";
+
+// ── Sesión 39: estado de la colocación en AR ─────────────────────────────────
+
+/** En qué punto está la colocación del objeto. */
+export type FaseAR = "buscando" | "listo" | "colocado";
+
+export interface EstadoAR extends CapacidadesAR {
+    fase: FaseAR;
+    /** true si el objeto está anclado: el sistema sigue corrigiendo su posición. */
+    anclado: boolean;
+    escala: number; // 1 = el tamaño del modelo (1,6 m); empieza en 0,25
+    giroGrados: number;
+    /** Centro del objeto en el espacio «local» (metros): x derecha, y arriba, -z adelante. */
+    posicion: { x: number; y: number; z: number };
+    /** Diagnóstico: cuántas veces se preguntó al hit-test y cuántas respondió con una superficie. */
+    consultas: number;
+    resultados: number; // consultas en que el sistema devolvió algo
+    impactos: number; // consultas con una pose utilizable
+    /** true si pasaron varios segundos sin superficie: el toque ya coloca delante de la mirada. */
+    sinSuperficie: boolean;
+}
+
+export interface OpcionesAR {
+    overlay: HTMLElement;
+    alCambiar: (estado: EstadoAR) => void;
+    alTerminar: () => void;
+}
+
+const ESCALA_INICIAL = 0.25; // el cubo de 1,6 m queda en 40 cm
+const ESCALA_MIN = 0.1;
+const ESCALA_MAX = 1;
+const CADA_CUANTOS_FOTOGRAMAS = 2; // el hit-test se consulta un fotograma de cada dos: basta para una retícula fluida
+const MS_HASTA_PLAN_B = 6000; // sin superficie tanto tiempo: se avisa y el toque coloca delante de la mirada
+const CONSULTAS_SIN_IMPACTO = 8; // consultas seguidas sin superficie antes de ocultar la retícula (evita parpadeos)
+const MITAD = 0.8; // medio cubo: para que apoye la base (y no el centro) en la superficie
 
 export interface Visor {
     /** Fija la rotación objetivo del modelo (radianes). El visor la alcanza suavemente. */
@@ -14,11 +52,13 @@ export interface Visor {
     /** true: sin color de fondo (se ve el video detrás). false: fondo azul oscuro. */
     fondoTransparente(activo: boolean): void;
     /**
-     * Sesión 38: conecta el visor a una sesión WebXR immersive-ar ya concedida.
-     * alTerminar se llama cuando la sesión termina (botón «Salir», sistema o error),
+     * Sesiones 38 y 39: conecta el visor a una sesión WebXR immersive-ar ya concedida.
+     * Busca superficies (hit-test), coloca el cubo con un toque, lo ancla y activa los gestos.
+     * Devuelve las capacidades que de verdad funcionan en esta sesión.
+     * opciones.alTerminar se llama cuando la sesión termina (botón «Salir», sistema o error),
      * después de devolver el visor a su estado anterior.
      */
-    entrarEnAR(sesion: XRSession, alTerminar: () => void): Promise<void>;
+    entrarEnAR(sesion: XRSession, opciones: OpcionesAR): Promise<CapacidadesAR>;
     destruir(): void;
 }
 
@@ -40,6 +80,9 @@ export function crearVisor(contenedor: HTMLElement): Visor {
     luz.position.set(3, 4, 5);
     escena.add(luz);
 
+    // Dos niveles: `raiz` sigue a la superficie o al ancla (lo manda el sistema);
+    // `grupo` es el objeto con lo que decide el usuario (mover, girar, escalar).
+    const raiz = new THREE.Group();
     const grupo = new THREE.Group();
     const cubo = new THREE.Mesh(
         new THREE.BoxGeometry(1.6, 1.6, 1.6),
@@ -50,7 +93,8 @@ export function crearVisor(contenedor: HTMLElement): Visor {
         new THREE.LineBasicMaterial({ color: 0x0b1220 })
     );
     grupo.add(cubo, aristas);
-    escena.add(grupo);
+    raiz.add(grupo);
+    escena.add(raiz);
 
     const controles = new OrbitControls(camara, renderer.domElement);
     controles.enableDamping = true;
@@ -85,9 +129,10 @@ export function crearVisor(contenedor: HTMLElement): Visor {
     bucle();
 
     // ── Sesión 38: realidad aumentada con WebXR ──────────────────────────────
+    const aGrados = (r: number) => Math.round((r * 180) / Math.PI);
     let sesionAR: XRSession | null = null;
 
-    async function entrarEnAR(sesion: XRSession, alTerminar: () => void) {
+    async function entrarEnAR(sesion: XRSession, opciones: OpcionesAR): Promise<CapacidadesAR> {
         cancelAnimationFrame(animacion); // en AR NO manda requestAnimationFrame: manda el reloj del visor XR
         renderer.xr.enabled = true;
         renderer.xr.setReferenceSpaceType("local");
@@ -100,19 +145,211 @@ export function crearVisor(contenedor: HTMLElement): Visor {
             throw err;
         }
         sesionAR = sesion;
+        const caps = capacidadesDe(sesion);
 
         const fondoPrevio = escena.background;
         escena.background = null; // la cámara real es el fondo: no se pinta nada detrás
         controles.enabled = false;
-        // Un cubo de 1,6 m sería gigante: se reduce a ~40 cm y se pone 1,5 m delante,
-        // un poco por debajo de la vista. En el espacio «local» el origen es el usuario.
-        const posicionPrevia = grupo.position.clone();
-        const escalaPrevia = grupo.scale.clone();
-        grupo.position.set(0, -0.2, -1.5);
-        grupo.scale.setScalar(0.25);
 
-        renderer.setAnimationLoop(() => {
-            grupo.rotation.y += 0.01; // prueba de vida: el cubo gira solo
+        // ── Estado de la colocación ──
+        let fase: FaseAR = caps.hitTest ? "buscando" : "colocado";
+        let ancla: XRAnchor | null = null;
+        let escala = ESCALA_INICIAL;
+        let consultas = 0;
+        let resultados = 0;
+        let impactosVistos = 0;
+        let sinSuperficie = false;
+        let ultimaPose = performance.now(); // cuándo fue la última vez que el hit-test encontró algo
+        let ultimoImpacto: XRRigidTransform | null = null; // pose de la superficie bajo el centro de la pantalla
+        let cuadro = 0; // fotogramas XR: el hit-test se consulta uno de cada CADA_CUANTOS_FOTOGRAMAS
+        let sinImpacto = 0; // consultas seguidas sin superficie
+
+        const estado = (): EstadoAR => {
+            raiz.updateMatrixWorld(true);
+            const p = grupo.getWorldPosition(new THREE.Vector3());
+            return {
+                ...caps,
+                fase,
+                anclado: ancla !== null,
+                escala,
+                giroGrados: ((aGrados(grupo.rotation.y) % 360) + 360) % 360,
+                posicion: { x: p.x, y: p.y, z: p.z },
+                consultas,
+                resultados,
+                impactos: impactosVistos,
+                sinSuperficie,
+            };
+        };
+        const avisar = () => opciones.alCambiar(estado());
+
+        // `raiz` deja de calcular su matriz sola: se la damos nosotros desde la superficie o el ancla.
+        raiz.matrixAutoUpdate = false;
+        grupo.position.set(0, MITAD * escala, 0); // la base apoya en la superficie
+        grupo.scale.setScalar(escala);
+        grupo.rotation.set(0, 0, 0);
+        if (caps.hitTest) {
+            raiz.visible = false; // hasta colocarlo, solo se ve la retícula
+        } else {
+            // Plan B sin hit-test: el cubo a 1,5 m delante, un poco por debajo de la vista.
+            raiz.matrix.makeTranslation(0, -0.5, -1.5);
+            raiz.visible = true;
+        }
+
+        // ── Hit-test: un rayo desde el centro de la pantalla («viewer») ──
+        let fuente: XRHitTestSource | null = null;
+        if (caps.hitTest) {
+            try {
+                const espacioViewer = await sesion.requestReferenceSpace("viewer");
+                try {
+                    // «plane» exige que el sistema haya reconocido un plano (tarda y falla en superficies lisas);
+                    // «point» acepta también puntos de característica sueltos: el anillo sale casi de inmediato.
+                    fuente = (await sesion.requestHitTestSource?.({ space: espacioViewer, entityTypes: ["plane", "point"] })) ?? null;
+                } catch {
+                    fuente = (await sesion.requestHitTestSource?.({ space: espacioViewer })) ?? null; // el navegador no admite «point»
+                }
+            } catch {
+                fuente = null;
+            }
+            if (!fuente) {
+                caps.hitTest = false; // lo concedió pero no funciona: plan B
+                fase = "colocado";
+                raiz.visible = true;
+                raiz.matrix.makeTranslation(0, -0.5, -1.5);
+            }
+        }
+
+        // Retícula: un anillo verde que se pega a la superficie que el hit-test encuentra.
+        const reticula = new THREE.Mesh(
+            new THREE.RingGeometry(0.1, 0.13, 40).rotateX(-Math.PI / 2), // acostado: su cara mira hacia arriba
+            new THREE.MeshBasicMaterial({ color: 0x4ade80 })
+        );
+        reticula.matrixAutoUpdate = false; // su matriz viene entera del hit-test
+        reticula.visible = false;
+        escena.add(reticula);
+
+        // ── Colocar con un toque ──
+        let turno = 0; // numera los toques: si llegan dos seguidos, solo vale el último
+        async function colocar(frame: XRFrame) {
+            const referencia = renderer.xr.getReferenceSpace();
+            if (!referencia) return;
+            const mio = ++turno;
+            let impacto: XRRigidTransform | null = null;
+            const hayImpacto = fuente !== null && reticula.visible && ultimoImpacto !== null;
+            if (fuente && !hayImpacto && !sinSuperficie) return; // no hay superficie: no se coloca en el aire (todavía)
+            if (hayImpacto) {
+                impacto = ultimoImpacto;
+                raiz.matrix.copy(reticula.matrix); // el cubo aparece donde está la retícula
+            } else {
+                // Plan B (sin hit-test, o sin superficie tras varios segundos): delante de la mirada actual, a 1,5 m.
+                const posicion = new THREE.Vector3().setFromMatrixPosition(camara.matrixWorld);
+                const delante = camara.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
+                posicion.addScaledVector(delante, 1.5);
+                posicion.y -= 0.5;
+                raiz.matrix.makeTranslation(posicion.x, posicion.y, posicion.z);
+            }
+            grupo.position.set(0, MITAD * escala, 0); // vuelve al centro de la nueva posición
+            raiz.visible = true;
+            fase = "colocado";
+            // ── Ancla: el sistema recuerda ESE punto del mundo real y lo sigue corrigiendo ──
+            ancla?.delete(); // al volver a colocar, la ancla anterior ya no sirve
+            ancla = null;
+            avisar();
+            if (impacto && caps.anclas) {
+                try {
+                    const nueva = await frame.createAnchor!(impacto, referencia);
+                    if (mio !== turno || !sesionAR) nueva.delete(); // llegó tarde: otro toque o la sesión ya terminó
+                    else ancla = nueva;
+                } catch {
+                    ancla = null; // el navegador rechazó anclar: el objeto queda fijo en el espacio «local»
+                }
+                avisar();
+            }
+        }
+
+        // ── Gestos: mover, girar y escalar ──
+        const rayo = new THREE.Raycaster();
+        const plano = new THREE.Plane();
+        const desfase = new THREE.Vector2();
+        const tmp = new THREE.Vector3();
+        function mover(clientX: number, clientY: number, primero: boolean) {
+            if (fase !== "colocado") return;
+            // Pantalla → rayo → punto donde ese rayo corta el plano de la superficie.
+            rayo.setFromCamera(new THREE.Vector2((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1), camara);
+            raiz.updateMatrixWorld(true);
+            const normal = new THREE.Vector3(0, 1, 0).transformDirection(raiz.matrixWorld);
+            plano.setFromNormalAndCoplanarPoint(normal, tmp.setFromMatrixPosition(raiz.matrixWorld));
+            const punto = rayo.ray.intersectPlane(plano, new THREE.Vector3());
+            if (!punto) return; // el rayo no baja hasta el plano (miras al cielo)
+            const local = raiz.worldToLocal(punto);
+            // En el primer movimiento se recuerda a cuánto del centro del objeto tocó el dedo, para que no salte.
+            if (primero) desfase.set(grupo.position.x - local.x, grupo.position.z - local.z);
+            grupo.position.x = local.x + desfase.x;
+            grupo.position.z = local.z + desfase.y;
+            avisar();
+        }
+        const gestos = crearGestos(opciones.overlay, {
+            alMover: mover,
+            alGirar(rad) {
+                if (fase !== "colocado") return;
+                grupo.rotation.y += rad;
+                avisar();
+            },
+            alEscalar(factor) {
+                if (fase !== "colocado") return;
+                escala = Math.min(ESCALA_MAX, Math.max(ESCALA_MIN, escala * factor));
+                grupo.scale.setScalar(escala);
+                grupo.position.y = MITAD * escala; // la base sigue apoyada
+                avisar();
+            },
+        });
+
+        sesion.addEventListener("select", (ev) => {
+            if (gestos.huboGesto()) return; // un arrastre no cuenta como «tocar para colocar»
+            void colocar((ev as XRInputSourceEvent).frame);
+        });
+
+        // ── El bucle XR: retícula y ancla, fotograma a fotograma ──
+        renderer.setAnimationLoop((_t, frame) => {
+            const referencia = renderer.xr.getReferenceSpace();
+            if (frame && referencia) {
+                if (fuente && cuadro++ % CADA_CUANTOS_FOTOGRAMAS === 0) {
+                    const impactos = frame.getHitTestResults(fuente);
+                    const pose = impactos.length ? impactos[0].getPose(referencia) : null;
+                    consultas++;
+                    if (impactos.length) resultados++;
+                    if (pose) impactosVistos++;
+                    if (consultas % 30 === 0) avisar(); // refresca el diagnóstico (el overlay lo limita a 5 veces por segundo)
+                    if (pose) {
+                        sinImpacto = 0;
+                        sinSuperficie = false;
+                        ultimaPose = performance.now();
+                        reticula.visible = true;
+                        reticula.matrix.fromArray(pose.transform.matrix);
+                        ultimoImpacto = pose.transform;
+                        if (fase === "buscando") {
+                            fase = "listo";
+                            avisar();
+                        }
+                    } else if (++sinImpacto >= CONSULTAS_SIN_IMPACTO) {
+                        // Una superficie que aparece y desaparece cada fotograma haría parpadear el texto del overlay.
+                        reticula.visible = false;
+                        ultimoImpacto = null;
+                        if (fase === "listo") {
+                            fase = "buscando";
+                            avisar();
+                        }
+                    }
+                    if (!pose && fase === "buscando" && !sinSuperficie && performance.now() - ultimaPose > MS_HASTA_PLAN_B) {
+                        sinSuperficie = true; // el texto de ayuda cambia y el toque ya coloca
+                        avisar();
+                    }
+                }
+                // Con ancla, la posición de `raiz` la corrige el sistema fotograma a fotograma.
+                if (ancla && frame.trackedAnchors?.has(ancla)) {
+                    const poseAncla = frame.getPose(ancla.anchorSpace, referencia);
+                    if (poseAncla) raiz.matrix.fromArray(poseAncla.transform.matrix);
+                }
+            }
             renderer.render(escena, camara);
         });
 
@@ -122,20 +359,31 @@ export function crearVisor(contenedor: HTMLElement): Visor {
                 renderer.setAnimationLoop(null);
                 renderer.xr.enabled = false;
                 sesionAR = null;
+                gestos.destruir();
+                fuente?.cancel();
+                ancla?.delete();
+                escena.remove(reticula);
+                reticula.geometry.dispose();
+                (reticula.material as THREE.Material).dispose();
                 escena.background = fondoPrevio;
                 controles.enabled = !porSensores;
-                grupo.position.copy(posicionPrevia);
-                grupo.scale.copy(escalaPrevia);
+                raiz.matrixAutoUpdate = true;
+                raiz.matrix.identity();
+                raiz.visible = true;
+                grupo.position.set(0, 0, 0);
+                grupo.scale.set(1, 1, 1);
                 grupo.rotation.set(0, 0, 0);
                 ajustarTamano(); // el visor XR cambió el tamaño del canvas
                 bucle(); // vuelve el requestAnimationFrame normal
-                alTerminar();
+                opciones.alTerminar();
             },
             { once: true }
         );
+
+        avisar();
+        return caps;
     }
 
-    const aGrados = (r: number) => Math.round((r * 180) / Math.PI);
     return {
         rotarHacia(x, y) {
             objetivoX = x;
