@@ -5,7 +5,8 @@ import { obtenerDescargas, marcarDescargaLista } from "./db";
 
 export const ETIQUETA_SYNC = "descargar-modelos";
 export const CACHE_MODELOS = "modelos-3d";
-export const urlDeModelo = (id: string) => `/modelos/${id}.json`;
+// BASE_URL vale «/» en local y «/nombre-del-repo/» en GitHub Pages: nunca escribas rutas absolutas a mano.
+export const urlDeModelo = (id: string) => `${import.meta.env.BASE_URL}modelos/${id}.json`;
 
 /** Las fichas que existen en public/modelos/. */
 export const MODELOS_IDS = ["modelo-demo-1", "modelo-demo-2", "modelo-demo-3"];

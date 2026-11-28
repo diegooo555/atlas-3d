@@ -3,7 +3,8 @@
     "target": "es2023",
     "module": "esnext",
     "lib": ["ES2023", "WebWorker"],
-    "types": [],
+    // Sesión 38: vite/client da los tipos de import.meta.env.BASE_URL (ruta base).
+    "types": ["vite/client"],
     "skipLibCheck": true,
 
     /* Bundler mode */

@@ -11,6 +11,9 @@ import { descargarPendientes, ETIQUETA_SYNC, CACHE_MODELOS } from "./descargas";
 
 declare const self: ServiceWorkerGlobalScope;
 
+// Ruta base de la app: «/» en local, «/nombre-del-repo/» en GitHub Pages.
+const BASE = import.meta.env.BASE_URL;
+
 // Background Sync no está en los tipos estándar de TypeScript: se declara lo mínimo que usamos.
 interface SyncEvent extends ExtendableEvent {
   readonly tag: string;
@@ -25,20 +28,20 @@ cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
 
 registerRoute(
-  ({ url }) => url.pathname.startsWith("/iconos/"),
+  ({ url }) => url.pathname.startsWith(BASE + "iconos/"),
   new CacheFirst({
     cacheName: "imagenes",
     plugins: [new ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 30 * 24 * 60 * 60 })],
   })
 );
-registerRoute(({ url }) => url.pathname.startsWith("/api/"), new NetworkFirst({ cacheName: "api-atlas3d" }));
+registerRoute(({ url }) => url.pathname.startsWith(BASE + "api/"), new NetworkFirst({ cacheName: "api-atlas3d" }));
 
-// Las fichas /modelos/*.json NO están en el precaché (se excluyeron en
+// Las fichas BASE/modelos/*.json NO están en el precaché (se excluyeron en
 // vite.config.ts): solo entran a la caché «modelos-3d» cuando el usuario las
 // descarga. Mientras no estén ahí, esta ruta las pide a la red; si ya están,
 // responde desde la caché aunque no haya conexión.
 registerRoute(
-  ({ url }) => url.pathname.startsWith("/modelos/"),
+  ({ url }) => url.pathname.startsWith(BASE + "modelos/"),
   async ({ request }) => {
     const guardada = await caches.match(request, { cacheName: CACHE_MODELOS });
     return guardada ?? fetch(request);
@@ -68,9 +71,9 @@ self.addEventListener("sync", (event) => {
         if (!ventanas.some((v) => v.visibilityState === "visible")) {
           await self.registration.showNotification("Modelos listos", {
             body: "Las fichas ya están en tu dispositivo: puedes consultarlas sin conexión.",
-            icon: "/iconos/icon-192.png",
+            icon: BASE + "iconos/icon-192.png",
             tag: "atlas-descarga",
-            data: { url: "/" },
+            data: { url: BASE },
           });
         }
       } catch (err) {
@@ -79,9 +82,9 @@ self.addEventListener("sync", (event) => {
         if (syncEvent.lastChance) {
           await self.registration.showNotification("No se pudo completar la descarga", {
             body: "Abre el Atlas con conexión y vuelve a pulsar «Descargar».",
-            icon: "/iconos/icon-192.png",
+            icon: BASE + "iconos/icon-192.png",
             tag: "atlas-descarga",
-            data: { url: "/" },
+            data: { url: BASE },
           });
         }
         throw err; // relanzar: así el navegador sabe que falló y reintenta
@@ -95,7 +98,7 @@ self.addEventListener("sync", (event) => {
 // ── Clic en una notificación: enfocar la app abierta o abrirla ─────────────
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const destino = new URL(event.notification.data?.url ?? "/", self.location.origin).href;
+  const destino = new URL(event.notification.data?.url ?? BASE, self.location.origin).href;
   event.waitUntil(
     (async () => {
       const ventanas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });

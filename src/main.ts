@@ -12,6 +12,7 @@ import {
 } from './db';
 import { descargarPendientes, ETIQUETA_SYNC, MODELOS_IDS, urlDeModelo } from "./descargas";
 import { activarAvisos, describirEstadoAvisos, estadoAvisos, mostrarAviso } from "./avisos";
+import { diagnosticarAR, mensajeSoporteAR, pedirSesionAR, describirErrorAR } from "./xr";
 
 const panel = document.createElement('div');
 panel.style.cssText = 'padding:12px;font-family:sans-serif';
@@ -173,6 +174,65 @@ document.addEventListener("visibilitychange", () => {
     avisarVisor("La cámara se apagó al salir de la página. Vuelve a activarla cuando quieras.");
   }
 });
+
+// ── Sesión 38: realidad aumentada con WebXR (1/2) ───────────────────────────
+const btnAR = document.querySelector<HTMLButtonElement>("#btn-ar")!;
+const estadoAR = document.querySelector<HTMLElement>("#estado-ar")!;
+const overlayAR = document.querySelector<HTMLElement>("#xr-overlay");
+const btnSalirAR = document.querySelector<HTMLButtonElement>("#btn-salir-ar")!;
+const diagAR = document.querySelector<HTMLElement>("#diag-ar")!;
+const detallesAR = document.querySelector<HTMLDetailsElement>(".diag-ar")!;
+const btnRecomprobar = document.querySelector<HTMLButtonElement>("#btn-recomprobar")!;
+let sesionAR: XRSession | null = null;
+
+// ¿Se puede? El botón solo se habilita si la respuesta es «sí». Se pregunta al
+// cargar, al pulsar «Comprobar de nuevo» y cuando el navegador avisa de que
+// cambió el dispositivo XR (así funciona también si activas el emulador después).
+async function comprobarAR(): Promise<void> {
+  const { estado, lineas } = await diagnosticarAR();
+  estadoAR.textContent = mensajeSoporteAR(estado);
+  diagAR.textContent = lineas.join("\n");
+  if (!sesionAR) btnAR.disabled = estado !== "disponible";
+  // Si no se puede, el diagnóstico se muestra abierto para ver qué comprobación falló.
+  detallesAR.open = estado !== "disponible";
+}
+void comprobarAR();
+btnRecomprobar.addEventListener("click", () => void comprobarAR());
+navigator.xr?.addEventListener("devicechange", () => void comprobarAR());
+
+btnAR.addEventListener("click", async () => {
+  avisarVisor("");
+  // La cámara del navegador y la sesión AR no pueden usarse a la vez: la AR
+  // abre la cámara por su cuenta. Se apagan también los sensores de la Sesión 35.
+  apagarCamara();
+  apagarSensores();
+  try {
+    // La petición ocurre DENTRO del clic: es el «gesto del usuario» que exige WebXR.
+    const sesion = await pedirSesionAR(overlayAR);
+    sesionAR = sesion;
+    btnAR.disabled = true;
+    await visor.entrarEnAR(sesion, () => {
+      sesionAR = null;
+      btnAR.disabled = false;
+      estadoAR.textContent = "La sesión de realidad aumentada terminó.";
+    });
+    // domOverlayState existe solo si el navegador concedió la función «dom-overlay».
+    estadoAR.textContent = sesion.domOverlayState
+      ? "Sesión de realidad aumentada activa. Usa «Salir de AR» sobre la cámara."
+      : "Sesión de realidad aumentada activa. Este navegador no mostró el botón sobre la cámara: sal con el gesto de salida del sistema.";
+  } catch (err) {
+    sesionAR?.end().catch(() => {});
+    sesionAR = null;
+    btnAR.disabled = false;
+    avisarVisor(describirErrorAR(err));
+  }
+});
+
+// «Salir de AR» solo termina la sesión: la restauración la hace el listener de «end».
+btnSalirAR.addEventListener("click", () => {
+  void sesionAR?.end();
+});
+
 // ── Sesión 37: fichas descargables, avisos y Background Sync ───────────────
 // Nombres de las fichas (las fichas completas viven en public/modelos/*.json y
 // NO están en el precaché: se descargan cuando el usuario lo pide).
@@ -199,7 +259,7 @@ const estadoDescargaEl = document.querySelector<HTMLElement>("#estado-descarga")
 const tarjetasEl = document.querySelector<HTMLUListElement>("#tarjetas")!;
 const fichaAbiertaEl = document.querySelector<HTMLElement>("#ficha-abierta")!;
 
-// Abrir una ficha desde una notificación: el aviso lleva data.url = "/?modelo=ID".
+// Abrir una ficha desde una notificación: el aviso lleva data.url = BASE_URL + "?modelo=ID".
 const modeloDestacado = new URLSearchParams(location.search).get("modelo");
 let descargados = new Set<string>();
 

@@ -179,3 +179,41 @@ body {
   padding: .6em .9em;
   font-size: .9em;
 }
+
+/* Sesión 38: realidad aumentada con WebXR */
+.estado-ar {
+  font-size: .85em;
+  color: #9fb0d0;
+  margin: .6em 0 .3em;
+}
+
+.diag-ar {
+  font-size: .8em;
+  color: #9fb0d0;
+  margin-bottom: .6em;
+}
+
+.diag-ar summary {
+  cursor: pointer;
+}
+
+.diag-ar pre {
+  white-space: pre-wrap;
+  margin: .4em 0;
+}
+
+.diag-ar button {
+  background: #162038;
+  color: #e8e2cf;
+  border: 1px solid #2a3550;
+  border-radius: 8px;
+  padding: .35em .7em;
+  cursor: pointer;
+}
+
+.xr-overlay { display: none; }
+/* Mientras dura la sesión, el navegador estira este elemento sobre toda la pantalla
+   (fondo transparente). Solo hay que decir cómo acomodar lo de adentro. */
+.xr-overlay:xr-overlay { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: .6em; padding-bottom: 1.2em; box-sizing: border-box; }
+.xr-overlay p { margin: 0; background: rgba(11, 18, 32, .75); color: #e8e2cf; padding: .4em .8em; border-radius: 8px; font-size: .9em; }
+.xr-overlay button { background: #ffcc29; color: #0b1220; border: 0; border-radius: 8px; padding: .7em 1.2em; font-weight: 700; cursor: pointer; }

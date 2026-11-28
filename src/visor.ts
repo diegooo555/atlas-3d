@@ -13,6 +13,12 @@ export interface Visor {
     rotacionActualGrados(): { x: number; y: number };
     /** true: sin color de fondo (se ve el video detrás). false: fondo azul oscuro. */
     fondoTransparente(activo: boolean): void;
+    /**
+     * Sesión 38: conecta el visor a una sesión WebXR immersive-ar ya concedida.
+     * alTerminar se llama cuando la sesión termina (botón «Salir», sistema o error),
+     * después de devolver el visor a su estado anterior.
+     */
+    entrarEnAR(sesion: XRSession, alTerminar: () => void): Promise<void>;
     destruir(): void;
 }
 
@@ -54,6 +60,8 @@ export function crearVisor(contenedor: HTMLElement): Visor {
     let porSensores = false;
 
     function ajustarTamano() {
+        // Durante la sesión XR el tamaño del canvas lo decide el visor XR, no la página.
+        if (renderer.xr.isPresenting) return;
         const ancho = contenedor.clientWidth || 320;
         const alto = Math.round(ancho * 0.6);
         renderer.setSize(ancho, alto);
@@ -76,6 +84,57 @@ export function crearVisor(contenedor: HTMLElement): Visor {
     }
     bucle();
 
+    // ── Sesión 38: realidad aumentada con WebXR ──────────────────────────────
+    let sesionAR: XRSession | null = null;
+
+    async function entrarEnAR(sesion: XRSession, alTerminar: () => void) {
+        cancelAnimationFrame(animacion); // en AR NO manda requestAnimationFrame: manda el reloj del visor XR
+        renderer.xr.enabled = true;
+        renderer.xr.setReferenceSpaceType("local");
+        try {
+            await renderer.xr.setSession(sesion);
+        } catch (err) {
+            // Si el visor XR no pudo tomar la sesión, el visor normal vuelve a andar.
+            renderer.xr.enabled = false;
+            bucle();
+            throw err;
+        }
+        sesionAR = sesion;
+
+        const fondoPrevio = escena.background;
+        escena.background = null; // la cámara real es el fondo: no se pinta nada detrás
+        controles.enabled = false;
+        // Un cubo de 1,6 m sería gigante: se reduce a ~40 cm y se pone 1,5 m delante,
+        // un poco por debajo de la vista. En el espacio «local» el origen es el usuario.
+        const posicionPrevia = grupo.position.clone();
+        const escalaPrevia = grupo.scale.clone();
+        grupo.position.set(0, -0.2, -1.5);
+        grupo.scale.setScalar(0.25);
+
+        renderer.setAnimationLoop(() => {
+            grupo.rotation.y += 0.01; // prueba de vida: el cubo gira solo
+            renderer.render(escena, camara);
+        });
+
+        sesion.addEventListener(
+            "end",
+            () => {
+                renderer.setAnimationLoop(null);
+                renderer.xr.enabled = false;
+                sesionAR = null;
+                escena.background = fondoPrevio;
+                controles.enabled = !porSensores;
+                grupo.position.copy(posicionPrevia);
+                grupo.scale.copy(escalaPrevia);
+                grupo.rotation.set(0, 0, 0);
+                ajustarTamano(); // el visor XR cambió el tamaño del canvas
+                bucle(); // vuelve el requestAnimationFrame normal
+                alTerminar();
+            },
+            { once: true }
+        );
+    }
+
     const aGrados = (r: number) => Math.round((r * 180) / Math.PI);
     return {
         rotarHacia(x, y) {
@@ -93,7 +152,9 @@ export function crearVisor(contenedor: HTMLElement): Visor {
         fondoTransparente(activo) {
             escena.background = activo ? null : COLOR_FONDO;
         },
+        entrarEnAR,
         destruir() {
+            void sesionAR?.end();
             cancelAnimationFrame(animacion);
             window.removeEventListener("resize", ajustarTamano);
             controles.dispose();
